@@ -1,5 +1,7 @@
 package com.cairn.securepocket.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -10,6 +12,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -77,6 +84,7 @@ import com.cairn.securepocket.ui.theme.SlateText
 import com.cairn.securepocket.ui.theme.TintError
 import com.cairn.securepocket.ui.theme.WhisperTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SecurePocketTheme(content: @Composable () -> Unit) = WhisperTheme(content)
@@ -117,7 +125,9 @@ private fun TopBar() {
     val health by Graph.runner.health.collectAsState()
     val battery = (health["Battery"] as? Response.Battery)?.pct
     Row(
-        modifier = Modifier.fillMaxWidth().background(Obsidian).padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().background(Obsidian)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("cairn", style = LabelSm.copy(color = OpticalWhite, letterSpacing = 0.08.em))
@@ -141,7 +151,9 @@ private fun TopBar() {
 private fun BottomNav(nav: androidx.navigation.NavHostController) {
     val backStack by nav.currentBackStackEntryAsState()
     Row(
-        modifier = Modifier.fillMaxWidth().background(Obsidian).border(1.dp, Hairline).padding(horizontal = 28.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().background(Obsidian).border(1.dp, Hairline)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+            .padding(horizontal = 28.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         NAV.forEach { d ->
@@ -176,6 +188,9 @@ fun DeviceScreen() {
     val bytes by Graph.runner.recordingBytes.collectAsState()
     val lastCapture by Graph.runner.lastCapture.collectAsState()
     val sim = Graph.transport is com.cairn.securepocket.transport.Simulator
+    val blePermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) { if (it.values.any { g -> g }) Graph.runner.submit(Intent.Connect) }
 
     val wifi = health["WifiStatus"] as? Response.WifiStatus
     val fw = health["FW"] as? Response.VersionInfo
@@ -317,12 +332,70 @@ fun DeviceScreen() {
         Text("connection: $conn", style = LabelSm.copy(color = SlateText))
         PrimaryPill("Sync Device", Modifier.fillMaxWidth()) { Graph.runner.syncNow() }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GhostPill("Connect", Modifier.weight(1f)) { Graph.runner.submit(Intent.Connect) }
+            GhostPill("Connect", Modifier.weight(1f)) {
+                if (Graph.transport is com.cairn.securepocket.transport.BleTransport &&
+                    android.os.Build.VERSION.SDK_INT >= 31) {
+                    blePermLauncher.launch(
+                        arrayOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT),
+                    )
+                } else {
+                    Graph.runner.submit(Intent.Connect)
+                }
+            }
             GhostPill("Disconnect", Modifier.weight(1f)) { Graph.runner.submit(Intent.Disconnect) }
         }
 
+        DriveCard()
+
         DiagnosticsDisclosure(health)
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun DriveCard() {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val drive = remember { Graph.drive }
+    var treeOk by remember { mutableStateOf(runCatching { drive.isLive() }.getOrDefault(false)) }
+    var count by remember { mutableStateOf(-1) }
+    var busy by remember { mutableStateOf(false) }
+    var summary by remember { mutableStateOf<com.cairn.securepocket.vault.ImportSummary?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) { drive.takeTree(uri); treeOk = true; count = -1 }
+    }
+    LaunchedEffect(treeOk, busy) {
+        if (treeOk && !busy) count = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { drive.listRecordings().size }
+    }
+    Column(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("POCKET DRIVE", style = LabelCaps.copy(color = SlateText), modifier = Modifier.weight(1f))
+            Text(
+                when {
+                    !treeOk -> "NOT CONNECTED"
+                    busy -> "BUSY"
+                    count >= 0 -> "$count FILES ON RECORD/"
+                    else -> "SCANNING"
+                },
+                style = LabelSm.copy(color = if (treeOk) Emerald else SlateText),
+            )
+        }
+        Text("Syncen: pull recordings off the card into the vault, size-verified.", style = LabelSm.copy(color = SlateText))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            GhostPill("PICK DRIVE", Modifier.weight(1f)) { pick.launch(null) }
+            if (treeOk && count > 0) {
+                PrimaryPill("IMPORT $count", Modifier.weight(1f)) {
+                    busy = true
+                    scope.launch {
+                        val s = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Graph.runner.importFromDrive() }
+                        summary = s; busy = false; count = -1
+                    }
+                }
+            }
+        }
+        summary?.let { sm ->
+            sm.notes.take(3).forEach { Text(it, style = LabelSm.copy(color = if (it.startsWith("imported")) Emerald else SlateText)) }
+            Text("${sm.imported} in · ${sm.skipped} dup · ${sm.failed} failed", style = LabelCaps.copy(color = SlateText))
+        }
     }
 }
 

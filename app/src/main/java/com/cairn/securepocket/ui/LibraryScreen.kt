@@ -25,7 +25,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,6 +63,22 @@ fun LibraryScreen() {
     val space = health["Space"] as? Response.Space
     var mode by rememberSaveable { mutableStateOf(LibraryMode.TRANSCRIPTIONS) }
     var query by rememberSaveable { mutableStateOf("") }
+    var remote by remember { mutableStateOf<List<com.cairn.securepocket.vault.LinkFile>>(emptyList()) }
+    var linkMsg by remember { mutableStateOf<String?>(null) }
+    var linkTick by remember { mutableStateOf(0) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val linkOn = Graph.link.enabled()
+    LaunchedEffect(linkTick, linkOn) {
+        if (!linkOn) { remote = emptyList(); linkMsg = null; return@LaunchedEffect }
+        linkMsg = "LINK: FETCHING"
+        try {
+            remote = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Graph.link.fetchIndex() }
+            linkMsg = null
+        } catch (e: Exception) {
+            remote = emptyList(); linkMsg = "LINK UNREACHABLE — ${Graph.link.baseUrl()}"
+        }
+    }
+    val remoteFiltered = remote.filter { it.name.contains(query, ignoreCase = true) }
 
     val fmt = DateTimeFormatter.ofPattern("HH:mm")
     val filtered = if (query.isBlank()) records else records.filter { rec ->
@@ -116,9 +135,41 @@ fun LibraryScreen() {
                 Text(if (records.isEmpty()) "record from the Device tab" else "clear the filter",
                     style = MaterialTheme.typography.bodySmall, color = SlateText)
             }
-        } else {
+        }
+        if (!(filtered.isEmpty() && remoteFiltered.isEmpty() && !linkOn)) {
             LazyColumn(Modifier.weight(1f)) {
                 items(filtered) { rec -> LibraryRow(rec, mode) }
+                if (linkOn) {
+                    item {
+                        Spacer(Modifier.height(18.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(6.dp).clip(CircleShape).background(Emerald))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "SECURE POCKET LINK · ${remoteFiltered.size} ON ${Graph.link.baseUrl().removePrefix("http://").take(24)}",
+                                style = LabelCaps.copy(color = Emerald), modifier = Modifier.weight(1f),
+                            )
+                            if (remoteFiltered.isNotEmpty()) {
+                                Box(
+                                    Modifier.clip(RoundedCornerShape(14.dp))
+                                        .border(1.dp, Emerald.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                                        .clickable {
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                val sum = Graph.runner.importFromLink()
+                                                linkMsg = "${sum.imported} in · ${sum.skipped} dup · ${sum.failed} failed"
+                                                linkTick++
+                                            }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                                ) { Text("PULL NEW", style = LabelCaps.copy(color = OpticalWhite)) }
+                            }
+                        }
+                        linkMsg?.let { Spacer(Modifier.height(4.dp)); Text(it, style = LabelSm.copy(color = SlateText)) }
+                    }
+                    items(remoteFiltered.filter { it.sha16.isNotEmpty() }) { f ->
+                        LinkRow(f)
+                    }
+                }
                 item {
                     Spacer(Modifier.height(20.dp))
                     Text(
@@ -150,6 +201,33 @@ private fun ModePill(label: String, selected: Boolean, onClick: () -> Unit) {
             label, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             style = LabelCaps.copy(color = if (selected) OpticalWhite else SlateText),
         )
+    }
+}
+
+@Composable
+private fun LinkRow(f: com.cairn.securepocket.vault.LinkFile) {
+    val fmt = DateTimeFormatter.ofPattern("HH:mm")
+    val dt = com.cairn.securepocket.vault.LinkClient.dateOf(f.name)
+    Column(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${dt.toLocalDate()} · ${dt.toLocalTime().format(fmt)}",
+                style = LabelSm.copy(color = SlateText), modifier = Modifier.weight(1f),
+            )
+            Text("LINK", style = LabelCaps.copy(color = Emerald))
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                f.name.removeSuffix(".mp3").take(30),
+                style = MaterialTheme.typography.bodyMedium, color = OpticalWhite,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("${"%,d".format(f.bytes / 1024)} KB · sha:${f.sha16.take(8)}",
+                style = LabelSm.copy(color = SlateText))
+        }
     }
 }
 

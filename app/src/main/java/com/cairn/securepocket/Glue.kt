@@ -9,6 +9,8 @@ import com.cairn.securepocket.transport.Observation
 import com.cairn.securepocket.transport.Simulator
 import com.cairn.securepocket.transport.Transport
 import com.cairn.securepocket.transport.TransportEvent
+import com.cairn.securepocket.vault.DriveImporter
+import com.cairn.securepocket.vault.ImportSummary
 import com.cairn.securepocket.vault.VaultStore
 import java.io.File
 import java.time.LocalDateTime
@@ -157,15 +159,61 @@ class SessionRunner(
     fun refresh() {
         _records.value = synchronized(vaultLock) { vault.list() }
     }
+
+    /** Pull everything new from the configured Secure Pocket Link server. */
+    fun importFromLink(): ImportSummary {
+        val sum = Graph.link.importAll(vault, vaultLock, cacheDir) { it.sha256 }
+        refresh()
+        return sum
+    }
+
+    /** Pull everything off the attached Pocket drive that isn't already in the vault. */
+    fun importFromDrive(): ImportSummary {
+        val sum = Graph.drive.importAll(vault, vaultLock) { it.sha256 }
+        refresh()
+        return sum
+    }
 }
 
 object Graph {
     lateinit var runner: SessionRunner
         private set
-    val transport: Transport = Simulator()
+    lateinit var drive: DriveImporter
+        private set
+    lateinit var link: com.cairn.securepocket.vault.LinkClient
+        private set
+    @Volatile lateinit var transport: Transport
+        private set
+    private lateinit var app: Application
+    private lateinit var scope: CoroutineScope
 
     fun init(app: Application) {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        this.app = app
+        this.scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        drive = DriveImporter(app)
+        link = com.cairn.securepocket.vault.LinkClient(app)
+        transport = newTransport(app)
+        runner = SessionRunner(
+            transport = transport,
+            vaultRoot = File(app.filesDir, "vault"),
+            cacheDir = app.cacheDir,
+            scope = scope,
+        )
+    }
+
+    private fun newTransport(app: Application): Transport =
+        when (app.getSharedPreferences("settings", Application.MODE_PRIVATE).getString("transport", "sim")) {
+            "ble" -> com.cairn.securepocket.transport.BleTransport(app)
+            else -> Simulator()
+        }
+
+    /** Rebuild the stack around a different transport; vault survives, old runner's loops leak by design in v0. */
+    fun switchTransport(kind: String) {
+        app.getSharedPreferences("settings", Application.MODE_PRIVATE).edit().putString("transport", kind).apply()
+        try {
+            if (::transport.isInitialized) transport.close()
+        } catch (_: Exception) {}
+        transport = newTransport(app)
         runner = SessionRunner(
             transport = transport,
             vaultRoot = File(app.filesDir, "vault"),

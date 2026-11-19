@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LAN/tailnet endpoints (Docling server, Secure Pocket Link) are user-typed
+     private addresses; cloud providers still require TLS per their own config. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

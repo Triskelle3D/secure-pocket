@@ -28,7 +28,7 @@ The settings page shows Link uptime, whether the phone API listener is running, 
 
 ## Pair the phone
 
-In Secure Pocket, open **Settings → Library location → Secure Pocket Link**. Use the computer's name or local IP with port `8732`, such as `http://studio-pc:8732`, then enter the token from the settings page and tap **Test connection**. Both devices need access to the same Wi-Fi or tailnet. The token protects library reads and writes.
+Open Link settings and look for **Ready to receive Pocket recordings**. On Android, open **Settings → Library Location** and select **Secure Pocket Link**. Copy the **Secure Pocket Link URL** and **Link token** from **Connect the Android app** into the matching fields. Tap **Test connection**, then **Save settings**. Both devices need access to the same Wi-Fi or tailnet. Connect your Pocket recorder to Android over Bluetooth to send its recordings.
 
 ## Portable executable builds
 

@@ -10,23 +10,52 @@
     :root { color-scheme: light dark; --bg:#f3f5f7; --card:#fff; --ink:#17212b; --muted:#62717d; --line:#dce3e8; --accent:#166d59; --soft:#e8f4ef; --warn:#9a5417; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif }
     @media(prefers-color-scheme:dark){:root{--bg:#11191d;--card:#192328;--ink:#e8eff0;--muted:#a4b2b8;--line:#34434a;--accent:#70d5b5;--soft:#203b34;--warn:#ffc17b}}
     *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink)} header{padding:30px max(22px,calc((100vw - 880px)/2));background:#132a2a;color:#f3fbf8} header small{letter-spacing:.13em;text-transform:uppercase;color:#9ed8c2;font-weight:700} h1{font-size:clamp(27px,5vw,40px);line-height:1.1;margin:9px 0} header p{color:#c3d7d0;margin:0;max-width:690px} main{max-width:880px;margin:25px auto;padding:0 20px 48px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px;box-shadow:0 2px 8px #0012}.card h2{font-size:19px;margin:0 0 4px}.hint,.sub{color:var(--muted);font-size:14px;margin:0 0 18px}label{display:block;font-size:14px;font-weight:650;margin:15px 0 6px}input[type=text],input[type=password],input[type=url]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}input:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.row{display:flex;gap:10px;align-items:center}.row input{flex:1}.toggle{white-space:nowrap}.check{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.check input{margin-top:5px;accent-color:var(--accent)}button{border:0;border-radius:8px;padding:11px 16px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}button.secondary{background:var(--soft);color:var(--ink);border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:20px}.status{padding:11px 13px;border-radius:8px;background:var(--soft);color:var(--accent);font-size:14px}.status.error{background:#fff0e5;color:var(--warn)}.pill{display:inline-block;font-size:12px;border-radius:99px;padding:3px 9px;background:var(--soft);color:var(--accent);font-weight:700}.pair{counter-reset:n;list-style:none;padding:0;margin:10px 0 0}.pair li{counter-increment:n;padding:0 0 14px 38px;position:relative}.pair li:before{content:counter(n);position:absolute;left:0;top:1px;width:25px;height:25px;display:grid;place-items:center;border-radius:50%;background:var(--soft);color:var(--accent);font-weight:750}.mono{font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}.footer{color:var(--muted);font-size:13px;margin:16px 3px}.diag{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.diag-item{padding:12px;border:1px solid var(--line);border-radius:9px;min-width:0}.diag-item strong{display:block;font-size:13px;color:var(--muted);font-weight:650}.diag-item span{display:block;margin-top:3px;overflow-wrap:anywhere}.log-list{list-style:none;padding:0;margin:12px 0 0;max-height:340px;overflow:auto}.log-list li{display:grid;grid-template-columns:145px 1fr;gap:8px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}.log-list time,.log-meta{color:var(--muted);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.log-detail{grid-column:2;color:var(--muted)}.log-empty{color:var(--muted);font-size:14px}@media(max-width:680px){.grid{grid-template-columns:1fr}header{padding:24px 20px}.card{padding:18px}}@media(max-width:480px){.diag{grid-template-columns:1fr}.log-list li{grid-template-columns:1fr;gap:2px}.log-detail{grid-column:1}}
+    .connection{border-top:4px solid var(--accent)}.connection .status{margin:0 0 16px;padding:14px 16px}.connection .status span{display:block}.connection .status .status-title{font-size:21px;font-weight:750;line-height:1.3}.status.error{background:var(--bg);border:1px solid var(--warn)}.pairing-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pairing-fields label{margin:0 0 6px}.pairing-fields input{min-width:0}.pairing-fields button{flex:none;padding-inline:12px}.pairing-help{margin:12px 0 0}.connection details{margin-top:14px}.connection summary{cursor:pointer;font-weight:650}.connection details p{margin:8px 0 0}.settings-grid{margin-top:16px}@media(max-width:760px){.pairing-fields{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-<header><small>Secure Pocket</small><h1>Link settings</h1><p>Choose where this computer stores Pocket recordings, connect your phone on your local network, and check that the backup folder is ready.</p></header>
+<header><small>Secure Pocket</small><h1>Link settings</h1></header>
 <main>
-  <div class="grid">
+  <section class="card connection" aria-labelledby="connect-heading">
+    <div id="status" class="status" role="status">
+      <span class="status-title" id="status-title">Checking Link readiness…</span>
+      <span id="status-detail"></span>
+    </div>
+    <h2 id="connect-heading">Connect the Android app</h2>
+    <ol class="pair">
+      <li>Put your phone on the same Wi-Fi as this computer, or connect both to the same tailnet.</li>
+      <li>In Secure Pocket on Android, open <strong>Settings → Library Location</strong>, select <strong>Secure Pocket Link</strong>, and enter these values:
+        <div class="pairing-fields">
+          <div>
+            <label for="pair-url">Secure Pocket Link URL</label>
+            <div class="row"><input id="pair-url" class="mono" type="text" readonly autocomplete="off"><button class="secondary" id="copy-url" type="button" disabled>Copy URL</button></div>
+          </div>
+          <div>
+            <label for="pair-token">Link token</label>
+            <div class="row"><input id="pair-token" type="password" readonly autocomplete="off"><button class="secondary toggle" id="reveal" type="button" disabled>Show</button><button class="secondary" id="copy" type="button" disabled>Copy token</button></div>
+          </div>
+        </div>
+        <p class="sub pairing-help" id="pair-address-help" hidden></p>
+        <p class="sub pairing-help" id="pair-message" role="status" hidden></p>
+      </li>
+      <li>Tap <strong>Test connection</strong>. Once it succeeds, tap <strong>Save settings</strong>.</li>
+    </ol>
+    <details id="pair-docling" hidden>
+      <summary>Use Docling from Android</summary>
+      <p class="sub">Open <strong>Settings → Transcription → Docling formatting</strong>. Select Pre, Post, or Both, then enter the same URL in <strong>Secure Pocket Link URL with Docling enabled</strong> and the same <strong>Link token</strong>. Allow sending audio or text to processing servers and tap <strong>Save settings</strong>.</p>
+    </details>
+  </section>
+  <div class="grid settings-grid">
     <section class="card"><h2>Backup destination</h2><p class="hint">Recordings sent from your phone are saved in this folder. A mounted NAS folder works when it is mounted and writable before Link starts.</p>
       <label for="root">Folder path on this computer</label><input id="root" type="text" placeholder="/Volumes/Archive/Secure Pocket" autocomplete="off">
       <p class="sub">Use an absolute path. Link creates the folder if needed. For a NAS, enter its mounted path (for example <span class="mono">/Volumes/Archive/Pocket</span> on macOS, <span class="mono">Z:\Pocket</span> on Windows, or <span class="mono">/mnt/nas/Pocket</span> on Linux).</p>
     </section>
-    <section class="card"><h2>Phone access token</h2><p class="hint">This private token protects the library on your network. Enter the same token in the Secure Pocket app.</p>
-      <label for="token">Token</label><div class="row"><input id="token" type="password" autocomplete="new-password"><button class="secondary toggle" id="reveal" type="button">Show</button><button class="secondary" id="copy" type="button">Copy</button></div>
-      <p class="sub">A token is created automatically on first launch. Keep it private. Saving a new token disconnects phones using the old one.</p>
+    <section class="card"><h2>Change Link token</h2><p class="hint">Link creates a private token on first launch. Keep it private.</p>
+      <label for="token">Token used by this server</label><input id="token" type="password" autocomplete="new-password">
+      <p class="sub">If you save a new token, update the Link token in Android to reconnect.</p>
     </section>
   </div>
   <section class="card"><div class="row" style="justify-content:space-between"><div><h2>Link diagnostics</h2><p class="hint" style="margin:4px 0 0">Live service and backup readiness. Refreshes while this page is visible.</p></div><button class="secondary" id="refresh" type="button">Refresh status</button></div>
-    <p id="status" class="status" role="status" aria-live="polite">Loading diagnostics…</p>
     <div class="diag" aria-live="polite">
       <div class="diag-item"><strong>Link server</strong><span id="uptime">Checking…</span></div>
       <div class="diag-item"><strong>Phone API listener</strong><span id="listener">Checking…</span></div>
@@ -42,30 +71,113 @@
     <p class="sub">Leave empty to use the default service address for your installation. The Docling service address is used by Link, not by the phone.</p>
   </section>
   <div class="actions"><button id="save" type="button">Save settings</button><span id="message" class="sub" role="status" aria-live="polite"></span></div>
-  <section class="card"><h2>Pair your phone</h2><p class="hint">After saving, open Secure Pocket on the same Wi-Fi or tailnet as this computer.</p>
-    <ol class="pair"><li>In Secure Pocket, open <strong>Settings → Library location → Secure Pocket Link</strong>.</li><li>Enter <span class="mono" id="pair-url">Finding this computer’s address…</span> and the token shown above. <button class="secondary" id="copy-url" type="button">Copy URL</button></li><li>Tap <strong>Test connection</strong>. The connection should report that the library is ready.</li></ol>
-    <p class="sub">If Link runs in Docker, use the host computer’s LAN IP or set <span class="mono">LINK_PUBLIC_HOST</span>. The settings page itself is private to this computer at <span class="mono" id="admin-url">http://127.0.0.1:8733</span>.</p>
-  </section>
   <section class="card"><div class="row" style="justify-content:space-between"><div><h2>Recent activity</h2><p class="hint" style="margin:4px 0 0">Recent requests and failures. Sensitive values and recording names are omitted.</p></div><button class="secondary" id="refresh-logs" type="button">Refresh logs</button></div>
     <p class="sub" id="logs-updated" aria-live="polite">Loading logs…</p><ol class="log-list" id="log-list" aria-label="Recent Link activity" aria-live="polite"></ol>
   </section>
   <p class="footer">The phone API listens on the port shown in Link diagnostics. Settings are served separately on this computer only.</p>
 </main>
 <script>
-const $=id=>document.getElementById(id); let pairingUrl='', doclingProbe=null;
+const $=id=>document.getElementById(id); let doclingProbe=null;
 async function api(path, options={}) { const response=await fetch(path,{cache:'no-store',...options}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`Request failed (${response.status})`); return data; }
-function setStatus(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error)}
+function setStatus(title,detail='',error=false){$('status-title').textContent=title;$('status-detail').textContent=detail;$('status').classList.toggle('error',error)}
+function setPairAddress(url, port) {
+  $('pair-url').value=url || '';
+  $('pair-url').placeholder=url ? '' : `http://<host-LAN-IP>:${port}`;
+  $('copy-url').disabled=!url;
+  const help=$('pair-address-help');
+  help.hidden=!!url;
+  help.textContent=`Use the computer’s LAN IP and port ${port}. In Docker, use the Docker host’s IP or set LINK_PUBLIC_HOST.`;
+}
+function setPairToken(token) {
+  $('pair-token').value=token || '';
+  $('pair-token').type='password';
+  $('reveal').textContent='Show';
+  $('reveal').disabled=$('copy').disabled=!token;
+  $('pair-message').hidden=true;
+}
+async function copyPairField(field,label) {
+  const message=$('pair-message');
+  try {
+    await navigator.clipboard.writeText(field.value);
+    message.textContent=`${label} copied.`;
+  } catch {
+    if(field.type==='password') {
+      field.type='text';
+      $('reveal').textContent='Hide';
+    }
+    field.select();
+    message.textContent=`Copy the selected ${label.toLowerCase()}.`;
+  }
+  message.hidden=false;
+}
 function duration(seconds){const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return h?`${h}h ${m}m`:m?`${m}m ${s}s`:`${s}s`}
 function localTime(value){if(!value)return 'None yet';const d=new Date(value);return Number.isNaN(d.valueOf())?value:d.toLocaleString()}
 function updateDocling(config,probe=doclingProbe){const enabled=!!config.enabled,configured=!!config.configured;let text=enabled?'Enabled':'Disabled';text+=configured?' · custom address':' · default address';if(probe?.state)text+=` · ${probe.state}${probe.checkedAt?` (${localTime(probe.checkedAt)})`:''}`;$('docling-state').textContent=text}
-async function load(){try{const s=await api('/admin/api/settings');$('root').value=s.root;$('token').value=s.token;$('docling-enabled').checked=!!s.docling.enabled;$('docling-url').value=s.docling.docling_url||'';updateDocling({enabled:s.docling.enabled,configured:!!s.docling.docling_url});pairingUrl=s.pairingUrl||'';$('pair-url').textContent=pairingUrl||`http://<computer-LAN-IP>:${s.apiPort}`;$('copy-url').disabled=!pairingUrl;$('admin-url').textContent=`http://127.0.0.1:${s.adminPort}`;await Promise.all([refresh(),refreshLogs()]);}catch(e){setStatus(e.message,true)}}
-async function refresh(){try{const s=await api('/admin/api/status'),b=s.backup,a=s.apiListener;const good=b.ready&&a.running;setStatus(good?'Running · backup folder is ready':'Needs attention · check the listener and backup folder',!good);$('uptime').textContent=`Running for ${duration(s.uptimeSeconds)}`;$('listener').textContent=a.running?`Listening on port ${a.port}${a.address?` · ${a.address}`:''}`:`Not running · port ${a.port}`;$('backup').textContent=b.ready?`Ready · ${b.root} · writable`:b.exists?`Not writable · ${b.root}`:`Folder unavailable · ${b.root}`;$('library-count').textContent=`${b.recordings} recording${b.recordings===1?'':'s'}`;$('last-activity').textContent=localTime(s.lastActivity);const config={enabled:s.docling.enabled,configured:s.docling.configured};updateDocling(config);if(doclingProbe)updateDocling(config,doclingProbe);}catch(e){setStatus(e.message,true)}}
+async function load() {
+  try {
+    const s=await api('/admin/api/settings');
+    $('root').value=s.root;
+    $('token').value=s.token;
+    $('docling-enabled').checked=!!s.docling.enabled;
+    $('docling-url').value=s.docling.docling_url || '';
+    setPairAddress(s.pairingUrl,s.apiPort);
+    setPairToken(s.token);
+    await Promise.all([refresh(),refreshLogs()]);
+  } catch(e) {
+    setStatus('Could not load Link settings',e.message,true);
+  }
+}
+async function refresh() {
+  try {
+    const s=await api('/admin/api/status'), b=s.backup, a=s.apiListener;
+    const problem=!a.running ? 'The phone API listener is stopped.'
+      : !s.authenticated ? 'Save a Link token before connecting Android.'
+      : !b.ready ? 'Choose a writable backup folder below.' : '';
+    if(problem) setStatus('Link needs attention',problem,true);
+    else setStatus('Ready to receive Pocket recordings',
+      'Waiting for Secure Pocket on Android. Connect your Pocket recorder to the phone over Bluetooth, then import recordings.');
+    setPairAddress(a.address ? `http://${a.address}` : '',a.port);
+    $('uptime').textContent=`Running for ${duration(s.uptimeSeconds)}`;
+    $('listener').textContent=a.running ? `Listening on ${a.address || `port ${a.port}`}` : `Stopped · port ${a.port}`;
+    $('backup').textContent=b.ready ? `Ready · ${b.root} · writable` : b.exists ? `Not writable · ${b.root}` : `Folder unavailable · ${b.root}`;
+    $('library-count').textContent=`${b.recordings} recording${b.recordings===1?'':'s'}`;
+    $('last-activity').textContent=localTime(s.lastActivity);
+    $('pair-docling').hidden=!s.docling.enabled;
+    updateDocling(s.docling);
+  } catch(e) {
+    setStatus('Link status unavailable','Could not reach Link. Refresh status to try again.',true);
+  }
+}
 function renderLogs(events){const list=$('log-list');list.replaceChildren();if(!events.length){const li=document.createElement('li');li.className='log-empty';li.textContent='No recent activity.';list.append(li);return}for(const event of events.slice(0,80)){const li=document.createElement('li'),time=document.createElement('time'),summary=document.createElement('span'),detail=document.createElement('span');time.dateTime=event.at;time.textContent=localTime(event.at);summary.className='log-meta';summary.textContent=`${event.level} · ${event.method} ${event.endpoint} · ${event.status}`;detail.className='log-detail';detail.textContent=event.message;li.append(time,summary,detail);list.append(li)}}
 async function refreshLogs(){try{const s=await api('/admin/api/logs');renderLogs(s.events||[]);$('logs-updated').textContent=`Updated ${new Date().toLocaleTimeString()}`}catch(e){$('logs-updated').textContent=`Could not load logs: ${e.message}`}}
 $('check-docling').addEventListener('click',async()=>{const b=$('check-docling');b.disabled=true;b.textContent='Checking…';try{doclingProbe=await api('/admin/api/docling-check',{method:'POST'});updateDocling(doclingProbe,doclingProbe);}catch(e){doclingProbe={state:'unreachable'};updateDocling({enabled:$('docling-enabled').checked,configured:!!$('docling-url').value},doclingProbe);}finally{b.disabled=false;b.textContent='Check Docling'}});
-$('save').addEventListener('click',async()=>{const button=$('save');button.disabled=true;$('message').textContent='Saving…';try{await api('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:$('root').value,token:$('token').value,docling:{enabled:$('docling-enabled').checked,docling_url:$('docling-url').value}})});doclingProbe=null;$('message').textContent='Saved';await refresh();}catch(e){$('message').textContent=e.message;}finally{button.disabled=false;}});
-$('refresh').addEventListener('click',refresh);$('refresh-logs').addEventListener('click',refreshLogs);$('reveal').addEventListener('click',()=>{const el=$('token');const show=el.type==='password';el.type=show?'text':'password';$('reveal').textContent=show?'Hide':'Show'});$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('token').value);$('message').textContent='Token copied';}catch{$('message').textContent='Select and copy the token manually';}});load();setInterval(()=>{if(!document.hidden){refresh();refreshLogs()}},15000);
-$('copy-url').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(pairingUrl);$('message').textContent='Pairing URL copied';}catch{$('message').textContent='Select and copy the pairing URL manually';}});
+$('save').addEventListener('click',async()=>{
+  const button=$('save'), token=$('token').value.trim();
+  button.disabled=true;
+  $('message').textContent='Saving…';
+  try {
+    await api('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:$('root').value,token,docling:{enabled:$('docling-enabled').checked,docling_url:$('docling-url').value}})});
+    setPairToken(token);
+    doclingProbe=null;
+    $('message').textContent='Saved';
+    await refresh();
+  } catch(e) {
+    $('message').textContent=e.message;
+  } finally {
+    button.disabled=false;
+  }
+});
+$('refresh').addEventListener('click',refresh);
+$('refresh-logs').addEventListener('click',refreshLogs);
+$('reveal').addEventListener('click',()=>{
+  const field=$('pair-token'), show=field.type==='password';
+  field.type=show?'text':'password';
+  $('reveal').textContent=show?'Hide':'Show';
+});
+$('copy').addEventListener('click',()=>copyPairField($('pair-token'),'Link token'));
+$('copy-url').addEventListener('click',()=>copyPairField($('pair-url'),'Link URL'));
+load();
+setInterval(()=>{if(!document.hidden){refresh();refreshLogs()}},15000);
 </script>
 </body>
 </html>

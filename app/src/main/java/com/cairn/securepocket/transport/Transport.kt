@@ -2,7 +2,7 @@ package com.cairn.securepocket.transport
 
 import java.time.Instant
 
-enum class ByteSource { COMMAND, RESPONSE, AUDIO, PING, PONG }
+enum class ByteSource { COMMAND, RESPONSE, EVENT, AUDIO, PING, PONG }
 
 /** One ordered transport observation. Everything the app knows about the device arrives as these. */
 data class Observation(

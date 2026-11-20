@@ -1,0 +1,39 @@
+# Optional GitHub Actions mirror; native per-OS builds are primary.
+name: Secure Pocket Link binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["link-v*"]
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+            file: SecurePocketLink.exe
+          - os: ubuntu-latest
+            name: linux-x64
+            file: SecurePocketLink
+          - os: macos-15-intel
+            name: macos-intel
+            file: SecurePocketLink
+          - os: macos-15
+            name: macos-apple-silicon
+            file: SecurePocketLink
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r link-server/requirements-build.txt
+      - run: python link-server/package.py
+      - run: python link-server/make-release-zip.py --name "${{ matrix.name }}" --executable "${{ matrix.file }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secure-pocket-link-${{ matrix.name }}
+          path: dist/SecurePocketLink-${{ matrix.name }}.zip

@@ -1,0 +1,19 @@
+# Start with the official multi-architecture CPU Docling Serve release.
+FROM ghcr.io/docling-project/docling-serve-cpu:v1.38.2
+
+# Docling Serve's stock CPU image omits the ASR runtime. Install the upstream
+# Whisper backend directly, plus a bundled ffmpeg decoder. This avoids pulling
+# the optional WhisperS2T/triton backend on arm64. The official base is CentOS
+# Stream and its default repositories omit ffmpeg.
+USER 0
+RUN mkdir -p /models \
+    && chown 1001:0 /models \
+    && /opt/app-root/bin/python -m pip install --no-cache-dir --no-deps \
+       "openai-whisper==20250625" "imageio-ffmpeg==0.6.0" \
+    && /opt/app-root/bin/python -m pip install --no-cache-dir \
+       "numba==0.68.1" "tiktoken==0.14.0" "more-itertools==11.2.1" \
+    && ffmpeg_path=$(/opt/app-root/bin/python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())') \
+    && ln -s "$ffmpeg_path" /usr/local/bin/ffmpeg \
+    && /opt/app-root/bin/python -c 'import whisper; print("Whisper audio backend ready")'
+
+USER 1001

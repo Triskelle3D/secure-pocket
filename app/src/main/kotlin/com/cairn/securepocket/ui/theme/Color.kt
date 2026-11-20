@@ -1,42 +1,28 @@
 package com.cairn.securepocket.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// Obsidian Whisper - strict dark, from stitch_pocket_recorder/obsidian_whisper/DESIGN.md
-// Base canvas
-val Obsidian = Color(0xFF0A0A0C)
-val ElevatedCanvas = Color(0xFF121216)
-val PanelGlass = Color(0x08FFFFFF) // rgba(255,255,255,0.03)
-val Hairline = Color(0x0FFFFFFF) // rgba(255,255,255,0.06)
-val HairlineStrong = Color(0x1AFFFFFF) // rgba(255,255,255,0.10)
-val GhostFill = Color(0x0DFFFFFF) // rgba(255,255,255,0.05)
+internal data class AppPalette(
+    val background: Color, val surface: Color, val hairline: Color, val ghost: Color,
+    val text: Color, val muted: Color, val emerald: Color, val crimson: Color, val error: Color,
+)
 
-// Roles
-val OpticalWhite = Color(0xFFF4F4F6) // primary text / glyphs
-val SlateText = Color(0xFF71717A) // subdued text (Slate 500)
-val Emerald = Color(0xFF10B981) // live telemetry / online / isolated
-val Crimson = Color(0xFFE11D48) // armed / recording / violation
-val TintError = Color(0xFFFFB4AB)
+internal val DarkPalette = AppPalette(Color(0xFF0A0A0C), Color(0xFF121216), Color(0xFF27272A),
+    Color(0xFF18181B), Color(0xFFF4F4F6), Color(0xFF9A9AA3), Color(0xFF10B981), Color(0xFFE11D48), Color(0xFFFFB4AB))
+internal val LightPalette = AppPalette(Color(0xFFF6F7F9), Color(0xFFFFFFFF), Color(0xFFD5D8DE),
+    Color(0xFFECEEF2), Color(0xFF191B20), Color(0xFF626873), Color(0xFF087F5B), Color(0xFFBD243D), Color(0xFFB3261E))
+internal val LocalAppPalette = compositionLocalOf { DarkPalette }
 
-// Material3 scheme mappings (dark only)
-val PrimaryDark = OpticalWhite
-val OnPrimaryDark = Color(0xFF2F3132)
-val SecondaryDark = Emerald
-val OnSecondaryDark = Color(0xFF003824)
-val TertiaryDark = Crimson
-val OnTertiaryDark = Color(0xFFFFDADA)
-val ErrorDark = TintError
-val OnErrorDark = Color(0xFF690005)
-val BackgroundDark = Obsidian
-val OnBackgroundDark = OpticalWhite
-val SurfaceDark = ElevatedCanvas
-val OnSurfaceDark = OpticalWhite
-val SurfaceVariantDark = Color(0xFF353437)
-val OnSurfaceVariantDark = Color(0xFFC5C7C9)
-val OutlineDark = Color(0xFF8F9194)
-val OutlineVariantDark = Color(0xFF44474A)
-val SurfaceContainerLowestDark = Color(0xFF0E0E10)
-val SurfaceContainerLowDark = Color(0xFF1C1B1D)
-val SurfaceContainerDark = Color(0xFF201F21)
-val SurfaceContainerHighDark = Color(0xFF2A2A2C)
-val SurfaceContainerHighestDark = Color(0xFF353437)
+val Obsidian: Color @Composable get() = LocalAppPalette.current.background
+val ElevatedCanvas: Color @Composable get() = LocalAppPalette.current.surface
+val PanelGlass: Color @Composable get() = LocalAppPalette.current.ghost
+val Hairline: Color @Composable get() = LocalAppPalette.current.hairline
+val HairlineStrong: Color @Composable get() = LocalAppPalette.current.hairline
+val GhostFill: Color @Composable get() = LocalAppPalette.current.ghost
+val OpticalWhite: Color @Composable get() = LocalAppPalette.current.text
+val SlateText: Color @Composable get() = LocalAppPalette.current.muted
+val Emerald: Color @Composable get() = LocalAppPalette.current.emerald
+val Crimson: Color @Composable get() = LocalAppPalette.current.crimson
+val TintError: Color @Composable get() = LocalAppPalette.current.error

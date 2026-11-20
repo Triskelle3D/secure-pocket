@@ -113,7 +113,12 @@ class Simulator(
                 reply("MCU&LIST&003")
             }
             cmd.startsWith("APP&LIST&") -> reply("MCU&LIST&0")
-            cmd.startsWith("APP&U&") -> reply("MCU&U&${audioBytes.size}")
+            cmd.startsWith("APP&U&") -> {
+                reply("MCU&U&${audioBytes.size}")
+                for (i in audioBytes.indices step chunkSize) {
+                    emitRaw(ByteSource.AUDIO, audioBytes.copyOfRange(i, minOf(audioBytes.size, i + chunkSize)))
+                }
+            }
             cmd == "APP&STA" -> startRecording()
             cmd == "APP&STO" -> stopRecording()
             else -> reply("MCU&UNKNOWN")
@@ -160,7 +165,7 @@ class Simulator(
 
     private suspend fun reply(text: String) {
         kotlinx.coroutines.delay(25)
-        emitRaw(ByteSource.RESPONSE, text.toByteArray())
+        emitRaw(if (text.startsWith("MCU&STA&") || text == "MCU&STO") ByteSource.EVENT else ByteSource.RESPONSE, text.toByteArray())
     }
 
     private suspend fun emit(src: ByteSource, text: String) = emitRaw(src, text.toByteArray())

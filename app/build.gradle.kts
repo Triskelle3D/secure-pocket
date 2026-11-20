@@ -11,8 +11,9 @@ android {
     applicationId = "com.cairn.securepocket"
     minSdk = 30
     targetSdk = 35
-    versionCode = 1
-    versionName = "1.0"
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    versionCode = 8
+    versionName = "1.7"
   }
 
   buildTypes {
@@ -44,6 +45,9 @@ kotlin {
 }
 
 dependencies {
+  implementation("com.google.mediapipe:tasks-genai:0.10.27")
+  implementation(files("../third_party/commonmark/commonmark-0.24.0.jar"))
+  implementation(fileTree("../third_party/speech") { include("*.aar") })
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
   androidTestImplementation(composeBom)

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Secure Pocket Link · Settings</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f3f5f7; --card:#fff; --ink:#17212b; --muted:#62717d; --line:#dce3e8; --accent:#166d59; --soft:#e8f4ef; --warn:#9a5417; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif }
+    @media(prefers-color-scheme:dark){:root{--bg:#11191d;--card:#192328;--ink:#e8eff0;--muted:#a4b2b8;--line:#34434a;--accent:#70d5b5;--soft:#203b34;--warn:#ffc17b}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink)} header{padding:30px max(22px,calc((100vw - 880px)/2));background:#132a2a;color:#f3fbf8} header small{letter-spacing:.13em;text-transform:uppercase;color:#9ed8c2;font-weight:700} h1{font-size:clamp(27px,5vw,40px);line-height:1.1;margin:9px 0} header p{color:#c3d7d0;margin:0;max-width:690px} main{max-width:880px;margin:25px auto;padding:0 20px 48px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px;box-shadow:0 2px 8px #0012}.card h2{font-size:19px;margin:0 0 4px}.hint,.sub{color:var(--muted);font-size:14px;margin:0 0 18px}label{display:block;font-size:14px;font-weight:650;margin:15px 0 6px}input[type=text],input[type=password],input[type=url]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}input:focus{outline:2px solid var(--accent);outline-offset:1px}.row{display:flex;gap:10px;align-items:center}.row input{flex:1}.toggle{white-space:nowrap}.check{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.check input{margin-top:5px;accent-color:var(--accent)}button{border:0;border-radius:8px;padding:11px 16px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}button.secondary{background:var(--soft);color:var(--ink);border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:20px}.status{padding:11px 13px;border-radius:8px;background:var(--soft);color:var(--accent);font-size:14px}.status.error{background:#fff0e5;color:var(--warn)}.pill{display:inline-block;font-size:12px;border-radius:99px;padding:3px 9px;background:var(--soft);color:var(--accent);font-weight:700}.pair{counter-reset:n;list-style:none;padding:0;margin:10px 0 0}.pair li{counter-increment:n;padding:0 0 14px 38px;position:relative}.pair li:before{content:counter(n);position:absolute;left:0;top:1px;width:25px;height:25px;display:grid;place-items:center;border-radius:50%;background:var(--soft);color:var(--accent);font-weight:750}.mono{font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}.footer{color:var(--muted);font-size:13px;margin:16px 3px}@media(max-width:680px){.grid{grid-template-columns:1fr}header{padding:24px 20px}.card{padding:18px}}
+  </style>
+</head>
+<body>
+<header><small>Secure Pocket</small><h1>Link settings</h1><p>Choose where this computer stores Pocket recordings, connect your phone on your local network, and check that the backup folder is ready.</p></header>
+<main>
+  <div class="grid">
+    <section class="card"><h2>Backup destination</h2><p class="hint">Recordings sent from your phone are saved in this folder. A mounted NAS folder works when it is mounted and writable before Link starts.</p>
+      <label for="root">Folder path on this computer</label><input id="root" type="text" placeholder="/Volumes/Archive/Secure Pocket" autocomplete="off">
+      <p class="sub">Use an absolute path. Link creates the folder if needed. For a NAS, enter its mounted path (for example <span class="mono">/Volumes/Archive/Pocket</span> on macOS, <span class="mono">Z:\Pocket</span> on Windows, or <span class="mono">/mnt/nas/Pocket</span> on Linux).</p>
+    </section>
+    <section class="card"><h2>Phone access token</h2><p class="hint">This private token protects the library on your network. Enter the same token in the Secure Pocket app.</p>
+      <label for="token">Token</label><div class="row"><input id="token" type="password" autocomplete="new-password"><button class="secondary toggle" id="reveal" type="button">Show</button><button class="secondary" id="copy" type="button">Copy</button></div>
+      <p class="sub">A token is created automatically on first launch. Keep it private. Saving a new token disconnects phones using the old one.</p>
+    </section>
+  </div>
+  <section class="card"><h2>Document processing</h2><p class="hint">Secure Pocket can send recordings and notes to your configured local Docling service for transcription or processing.</p>
+    <label class="check"><input id="docling-enabled" type="checkbox"><span><strong>Enable Docling processing</strong><br><span class="sub">Turn this on after your Docling service is running.</span></span></label>
+    <label for="docling-url">Docling service address <span class="pill">optional</span></label><input id="docling-url" type="url" placeholder="http://localhost:5001">
+    <p class="sub">Leave empty to use the default service address for your installation. The Docling service address is used by Link, not by the phone.</p>
+  </section>
+  <section class="card"><h2>Pair your phone</h2><p class="hint">After saving, open Secure Pocket on the same Wi-Fi or tailnet as this computer.</p>
+    <ol class="pair"><li>In Secure Pocket, open <strong>Settings → Library location → Secure Pocket Link</strong>.</li><li>Enter <span class="mono" id="pair-url">Finding this computer’s address…</span> and the token shown above. <button class="secondary" id="copy-url" type="button">Copy URL</button></li><li>Tap <strong>Test connection</strong>. The connection should report that the library is ready.</li></ol>
+    <p class="sub">If Link runs in Docker, use the host computer’s LAN IP or set <span class="mono">LINK_PUBLIC_HOST</span>. The settings page itself is private to this computer at <span class="mono" id="admin-url">http://127.0.0.1:8733</span>.</p>
+  </section>
+  <section class="card"><div class="row" style="justify-content:space-between"><div><h2>Link status</h2><p class="hint" style="margin:4px 0 0">Current folder and connection readiness.</p></div><button class="secondary" id="refresh" type="button">Refresh status</button></div><p id="status" class="status" role="status" aria-live="polite">Loading status…</p><p class="sub" id="details"></p></section>
+  <div class="actions"><button id="save" type="button">Save settings</button><span id="message" class="sub" role="status" aria-live="polite"></span></div>
+  <p class="footer">The phone API listens on port 8732. Settings are served separately on this computer only.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id); let pairingUrl='';
+async function api(path, options={}) { const response=await fetch(path,{cache:'no-store',...options}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`Request failed (${response.status})`); return data; }
+function setStatus(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error)}
+async function load(){try{const s=await api('/admin/api/settings');$('root').value=s.root;$('token').value=s.token;$('docling-enabled').checked=!!s.docling.enabled;$('docling-url').value=s.docling.docling_url||'';pairingUrl=s.pairingUrl||'';$('pair-url').textContent=pairingUrl||`http://<computer-LAN-IP>:${s.apiPort}`;$('copy-url').disabled=!pairingUrl;$('admin-url').textContent=`http://127.0.0.1:${s.adminPort}`;await refresh();}catch(e){setStatus(e.message,true)}}
+async function refresh(){try{const s=await api('/admin/api/status');const good=s.exists&&s.writable;setStatus(good?'Ready · backup folder is available and writable':'Folder unavailable · check the path and mount',!good);$('details').textContent=`${s.root} · ${s.files} recording${s.files===1?'':'s'} found · ${s.authenticated?'token protected':'token missing'}${s.docling?' · Docling enabled':' · Docling disabled'}`;}catch(e){setStatus(e.message,true)}}
+$('save').addEventListener('click',async()=>{const button=$('save');button.disabled=true;$('message').textContent='Saving…';try{await api('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:$('root').value,token:$('token').value,docling:{enabled:$('docling-enabled').checked,docling_url:$('docling-url').value}})});$('message').textContent='Saved';await refresh();}catch(e){$('message').textContent=e.message;}finally{button.disabled=false;}});
+$('refresh').addEventListener('click',refresh);$('reveal').addEventListener('click',()=>{const el=$('token');const show=el.type==='password';el.type=show?'text':'password';$('reveal').textContent=show?'Hide':'Show'});$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('token').value);$('message').textContent='Token copied';}catch{$('message').textContent='Select and copy the token manually';}});load();
+$('copy-url').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(pairingUrl);$('message').textContent='Pairing URL copied';}catch{$('message').textContent='Select and copy the pairing URL manually';}});
+</script>
+</body>
+</html>

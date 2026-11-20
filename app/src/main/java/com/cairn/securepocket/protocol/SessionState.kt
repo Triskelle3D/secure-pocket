@@ -66,6 +66,7 @@ class SessionState(
     /** device announced sleep/disconnect mid-session */
     fun onSleep() {
         recording?.let { sink ->
+            sink.append(pendingTail)
             sink.markPartial()
             onCapture(sink)
         }
@@ -91,6 +92,7 @@ class SessionState(
             is Response.RecordingStop -> if (stoArmed && phase == Phase.CAPTURING) {
                 val sink = recording
                 if (sink != null) {
+                    sink.append(pendingTail)
                     sink.flush()
                     sink.finish()
                     onCapture(sink)

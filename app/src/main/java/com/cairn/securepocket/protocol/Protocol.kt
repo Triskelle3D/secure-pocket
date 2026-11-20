@@ -30,6 +30,9 @@ object Commands {
     fun encode(command: String, padWidth: Int = 0): ByteArray {
         require(command.startsWith("APP&")) { "commands must start with APP&" }
         val head = command.substringAfter("APP&").substringBefore("&")
+        if (head == "D") require(Regex("""APP&D&\d{4}-\d{2}-\d{2}&(?:\d{14}|PH\d{12})""").matches(command)) {
+            "Deletion requires one exact recording identifier."
+        }
         require(head !in NEVER_SEND) { "refusing to send forbidden command group: $head" }
         val bytes = command.toByteArray(Charsets.US_ASCII)
         if (padWidth <= 0 || bytes.size >= padWidth) return bytes
@@ -50,6 +53,7 @@ sealed interface Response {
     data class UploadState(val raw: String) : Response            // MCU&UPLE&...
     data class WifiStatus(val savedNetworks: Int, val secondArg: String?) : Response
     data class DirsListing(val dirs: List<String>, val summaryRaw: String?) : Response
+    data class DeleteResult(val accepted: Boolean) : Response
     data class FileList(val files: List<DeviceFile>, val count: Int, val complete: Boolean) : Response
     data class FileSize(val bytes: Long) : Response
     data class RecordingStart(val startAt: LocalDateTime) : Response
@@ -59,7 +63,7 @@ sealed interface Response {
     data class Completed(val response: Response) : Response       // wrapper: completion marker satisfied
 }
 
-data class DeviceFile(val date: LocalDate, val startAt: LocalDateTime, val lengthSeconds: Int)
+data class DeviceFile(val date: LocalDate, val startAt: LocalDateTime, val lengthSeconds: Int, val wireId: String = startAt.format(Ts14.fmt))
 
 /** Pure incremental parser: feed it a1/a3 bytes; it emits completed Responses when
  *  completion markers are satisfied (split replies + LIST count terminator + DIRS_SUM). */
@@ -69,8 +73,8 @@ class ReplyParser {
     private val accDirs = ArrayList<String>()
 
     companion object {
-        private val F_LINE = Regex("""^MCU&F&(YYYY-MM-DD)&(TS14)&(\d+)$""".replace("YYYY-MM-DD", """\d{4}-\d{2}-\d{2}""").replace("TS14", """\d{14}"""))
-        private val LIST_COUNT = Regex("""^MCU&LIST&(0|\d{3})$""")
+        private val F_LINE = Regex("""^MCU&F&(YYYY-MM-DD)&(TS14)&(\d+)$""".replace("YYYY-MM-DD", """\d{4}-\d{2}-\d{2}""").replace("TS14", """(?:\d{14}|PH\d{12})"""))
+        private val LIST_COUNT = Regex("""^MCU&LIST&(\d+)$""")
         private val DIRS_SUM = Regex("""^MCU&DIRS_SUM&(\d+)$""")
         private val DIRS_ONE = Regex("""^MCU&DIRS&(YYYY-MM-DD)$""".replace("YYYY-MM-DD", """\d{4}-\d{2}-\d{2}"""))
 
@@ -83,13 +87,15 @@ class ReplyParser {
         }
 
         fun classify(s: String): Response? = when {
+            s == "MCU&D" -> Response.DeleteResult(true)
+            s == "MCU&D&ERR" -> Response.DeleteResult(false)
             s == "MCU&STO" -> Response.RecordingStop
             s == "MCU&OFF" -> Response.Event("OFF")
             s == "MCU&T&OK" -> Response.Ack("T")
             s == "MCU&SK&OK" -> Response.Ack("SK")
             s == "MCU&UNKNOWN" -> Response.UnknownRaw(s)
             s.startsWith("MCU&STA&") -> runCatching {
-                Response.RecordingStart(Ts14.parse(s.removePrefix("MCU&STA&")))
+                Response.RecordingStart(Ts14.parse(s.removePrefix("MCU&STA&").let { if (it.startsWith("PH")) "20" + it.drop(2) else it }))
             }.getOrElse { Response.UnknownRaw(s) }
             s.startsWith("MCU&BAT&") -> Response.Battery(s.removePrefix("MCU&BAT&").toIntOrNull() ?: -1)
             s.startsWith("MCU&SPA&") -> s.removePrefix("MCU&SPA&").split("&").let {
@@ -150,7 +156,10 @@ class ReplyParser {
             }
             when {
                 isFPart -> accFiles += F_LINE.matchEntire(payload)!!.let {
-                    DeviceFile(Dates.parse(it.groupValues[1]), Ts14.parse(it.groupValues[2]), it.groupValues[3].toInt())
+                    val date = Dates.parse(it.groupValues[1])
+                    val wireId = it.groupValues[2]
+                    val ts = if (wireId.startsWith("PH")) date.year.toString().take(2) + wireId.drop(2) else wireId
+                    DeviceFile(date, Ts14.parse(ts), it.groupValues[3].toInt(), wireId)
                 }
                 isCountTerm -> {
                     out += Response.FileList(accFiles.toList(), LIST_COUNT.matchEntire(payload)!!.groupValues[1].toInt(), true)

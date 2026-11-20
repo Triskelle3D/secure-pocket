@@ -57,6 +57,7 @@ class RoundTripTest {
             if (obs.sessionId != current) { dropped++; return }
             val s = session ?: return
             when (obs.source) {
+                com.cairn.securepocket.transport.ByteSource.EVENT -> s.onEventChannel(obs.bytes)
                 com.cairn.securepocket.transport.ByteSource.AUDIO -> s.onResponseChannel(obs.bytes)
                 com.cairn.securepocket.transport.ByteSource.RESPONSE -> {
                     val r = ReplyParser.decodeSingle(obs.bytes)

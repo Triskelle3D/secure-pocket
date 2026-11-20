@@ -1,371 +1,389 @@
 package com.cairn.securepocket.ui
 
 import android.content.Context
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import com.cairn.securepocket.Graph
-import androidx.compose.foundation.border
+import android.content.SharedPreferences
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cairn.securepocket.BuildConfig
-import com.cairn.securepocket.ui.theme.Crimson
-import com.cairn.securepocket.ui.theme.Emerald
-import com.cairn.securepocket.ui.theme.Hairline
-import com.cairn.securepocket.ui.theme.JetBrainsMono
-import com.cairn.securepocket.ui.theme.LabelCaps
-import com.cairn.securepocket.ui.theme.LabelSm
-import com.cairn.securepocket.ui.theme.OpticalWhite
-import com.cairn.securepocket.ui.theme.PlusJakartaSans
-import com.cairn.securepocket.ui.theme.SlateText
+import com.cairn.securepocket.Graph
+import com.cairn.securepocket.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-
-private fun prefs(ctx: Context) = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
-    val p = remember { prefs(ctx) }
-    Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Spacer(Modifier.height(8.dp))
-        Text("SETTINGS", style = LabelCaps.copy(color = SlateText))
-        Text("Engines & storage", style = MaterialTheme.typography.displaySmall, color = OpticalWhite)
-        Section("SPEECH TO TEXT", "priority · failover · local first") {
-            EngineList(p, "stt", listOf(
-                Eng("Local on-device Whisper", "local_whisper", "v1 — ships with the APK"),
-                Eng("whisper.cpp (local)", "local_whispercpp", "runs on-device, GGML model"),
-                Eng("Vosk (local)", "local_vosk", "lightweight offline models"),
-                Eng("HTTP endpoint", "http_stt", "any OpenAI-compatible /transcriptions"),
-                Eng("AssemblyAI", "assemblyai", "realtime + batch cloud STT"),
-                Eng("Deepgram", "deepgram", "cloud STT"),
-            ))
-        }
-        Section("TRANSCRIPT TO SUMMARY", "providers · docling layers · priority") {
-            EngineList(p, "sum", listOf(
-                Eng("Local LLM (on-device)", "local_llm", "v1 — quantized 3-4B model"),
-                Eng("Ollama on LAN", "ollama", "host:port of your machine"),
-                Eng("HTTP endpoint", "http_sum", "OpenAI-compatible /chat/completions"),
-                Eng("OpenRouter", "openrouter", "multi-model cloud"),
-                Eng("OpenAI", "openai", "cloud"),
-                Eng("Anthropic", "anthropic", "cloud"),
-            ))
-            Field(p, "docling_url", "DOCLING SERVER", "http://192.168.1.10:5001")
-            ToggleRow(p, "docling_pre", "PRE-DOCLING — audio → raw transcript md")
-            ToggleRow(p, "docling_post", "POST-DOCLING — md → summary + transcript")
-            DoclingTest(p)
-        }
-        Section("SINKEN & BACKUP", "where files land · the flow off the Pocket") {
-            Text("Syncen = pull recordings off the Pocket, free its storage, land them somewhere durable.",
-                style = MaterialTheme.typography.bodySmall, color = SlateText)
-            val dest = p.getString("sync_dest", "none") ?: "none"
-            Radio(p, "sync_dest", "none", "None — files stay in the vault")
-            Radio(p, "sync_dest", "phone", "On-phone folder (you pick the location)")
-            Radio(p, "sync_dest", "nas", "NAS on the home network")
-            Radio(p, "sync_dest", "link", "Secure Pocket Link (desktop app — in flight)")
-            if (dest == "phone") PhoneFolder(p)
-            if (dest == "nas") {
-                Field(p, "nas_host", "NAS ADDRESS", "192.168.1.50 or nas.home.lan")
-                Field(p, "nas_share", "SHARE / PATH", "/volume1/pocket")
-                Field(p, "nas_user", "USER", "pocket")
-                Field(p, "wifi_ssid", "HOME NETWORK (SSID)", "only auto-sync on this network")
+    val context = LocalContext.current
+    val saved = remember(context) { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+    val p = remember(context) {
+        context.getSharedPreferences("settings_draft", Context.MODE_PRIVATE).also { copySettings(saved, it) }
+    }
+    var saveStatus by remember { mutableStateOf("") }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val names = listOf("Transcription", "Summaries", "Library Location", "App")
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Settings", style = MaterialTheme.typography.displaySmall, color = OpticalWhite)
+        Text("Changes stay pending until you save.", style = MaterialTheme.typography.bodySmall)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (row in 0..1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (column in 0..1) {
+                    val i = row * 2 + column
+                    FilterChip(selected = tab == i, onClick = { tab = i }, modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                        label = { Text(names[i], style = MaterialTheme.typography.labelLarge) })
+                }
             }
-            if (dest == "link") {
-                Text("Desktop library server (link-server/secure_pocket_link.py) on your Mac, LAN or tailnet.",
-                    style = MaterialTheme.typography.bodySmall, color = SlateText)
-                Field(p, "link_base", "LINK SERVER ADDRESS", "http://192.168.1.10:8732 or http://<tailscale-ip>:8732")
-                Field(p, "link_token", "LINK TOKEN (optional)", "match --token on the server")
-                LinkTest(p)
-            }
-            if (dest != "none") ToggleRow(p, "sync_auto", "AUTO — sync when on the home network")
         }
-        Section("APP", "appearance & build") {
-            val ctx = LocalContext.current
-            var transport by remember {
-                mutableStateOf(ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("transport", "sim"))
-            }
-            Row(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text("TRANSPORT", style = LabelCaps.copy(color = SlateText), modifier = Modifier.weight(1f))
-                listOf("sim" to "SIMULATOR", "ble" to "BLE DEVICE").forEach { (kind, label) ->
-                    val sel = transport == kind
-                    Box(
-                        Modifier.clip(RoundedCornerShape(14.dp))
-                            .background(if (sel) Emerald.copy(alpha = 0.18f) else androidx.compose.ui.graphics.Color.Transparent)
-                            .border(1.dp, if (sel) Emerald.copy(alpha = 0.6f) else Hairline, RoundedCornerShape(14.dp))
-                            .clickable { Graph.switchTransport(kind); transport = kind }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text(label, style = LabelCaps.copy(color = if (sel) Emerald else SlateText))
+        Surface(color = ElevatedCanvas, shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (tab) {
+                    0 -> {
+                        Title("Speech to text")
+                        Text("Choose how Pocket audio becomes text.", style = MaterialTheme.typography.bodyMedium)
+                        val currentStage = p.getString("docling_mode", "Off") ?: "Off"
+                        val doclingTranscribes = currentStage == "Pre" || currentStage == "Both"
+                        val engine = Choice(p, "stt_provider", "Speech engine", listOf("On-device Vosk", "OpenAI", "Compatible server"), enabled = !doclingTranscribes)
+                        if (doclingTranscribes) Text("Docling handles transcription. Speech engine settings are paused.", style = MaterialTheme.typography.bodySmall)
+                        when (engine) {
+                            "On-device Vosk" -> Text("English transcription on this phone.")
+                            else -> key(engine) {
+                                if (engine == "Compatible server") PrefField(p, "stt_url", "Speech API base URL (including /v1)", enabled = !doclingTranscribes)
+                                PrefField(p, "stt_model", "Speech model", default = "whisper-1", enabled = !doclingTranscribes)
+                                PrefField(p, if (engine == "OpenAI") "stt_openai_token" else "stt_token", "Speech API key", true, enabled = !doclingTranscribes)
+                            }
+                        }
+                        PrefSwitch(p, "auto_transcribe", true, "Process new recordings on import")
+                        HorizontalDivider()
+                        HorizontalDivider()
+                        Title("Docling formatting")
+                        val stage = Choice(p, "docling_mode", "Docling stages", listOf("Off", "Pre", "Post", "Both"))
+                        Text("Pre: transcribe audio. Post: format the summary. Both: use Docling for each.", style = MaterialTheme.typography.bodyMedium)
+                        if (stage != "Off") {
+                            PrefField(p, "docling_url", "Secure Pocket Link URL with Docling enabled")
+                            PrefField(p, "docling_token", "Link token", true)
+                        }
+                        PrefSwitch(p, "allow_processing_servers", false, "Send audio or text to selected processing servers")
                     }
-                    Spacer(Modifier.width(8.dp))
+                    1 -> {
+                        Title("Summary and title")
+                        Text("Choose the model that writes recording summaries and titles.", style = MaterialTheme.typography.bodyMedium)
+                        val provider = Choice(p, "llm_provider", "LLM provider", listOf("On-device LLM", "Off", "Ollama", "OpenAI", "OpenRouter", "Compatible server"))
+                        if (provider == "On-device LLM") LocalModelPicker()
+                        if (provider !in listOf("On-device LLM", "Off")) key(provider) {
+                            if (provider in listOf("Ollama", "Compatible server")) PrefField(p, "llm_url",
+                                if (provider == "Ollama") "Ollama server URL" else "LLM API base URL (including /v1)")
+                            PrefField(p, "llm_model", "Model ID")
+                            if (provider != "Ollama") PrefField(p, "llm_token_$provider", "LLM API key", true)
+                        }
+                        if (provider !in listOf("On-device LLM", "Off"))
+                            PrefSwitch(p, "allow_processing_servers", false, "Allow sending text to this provider")
+                        PrefSwitch(p, "auto_summary", true, "Summarize and title new recordings")
+                        Text("Maximum summary points")
+                        var count by remember { mutableIntStateOf(p.getInt("summary_points", 3)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (n in listOf(3,5,8)) FilterChip(count == n, {
+                                count = n; p.edit().putInt("summary_points", n).apply()
+                            }, { Text(n.toString()) })
+                        }
+                    }
+                    2 -> {
+                        Title("Library location")
+                        var keepPhone by remember { mutableStateOf(p.getBoolean("store_phone", true)) }
+                        var destination by remember {
+                            mutableStateOf(p.getString("library_destination", "Phone").orEmpty().let { if (it == "NAS backup") "NAS" else it })
+                        }
+                        Text("Choose where new recordings go.", style = MaterialTheme.typography.bodyMedium)
+                        DestinationOption("Phone", "Keep recordings in the phone library.", destination == "Phone") {
+                            destination = "Phone"
+                            keepPhone = true
+                            p.edit().putString("library_destination", "Phone").putBoolean("store_phone", true).apply()
+                        }
+                        DestinationOption("Secure Pocket Link", "Send recordings to a PC running Secure Pocket Link.", destination == "Secure Pocket Link") {
+                            destination = "Secure Pocket Link"
+                            p.edit().putString("library_destination", destination).apply()
+                        }
+                        DestinationOption("NAS", "Send recordings to a NAS over home Wi-Fi.", destination == "NAS") {
+                            destination = "NAS"
+                            p.edit().putString("library_destination", destination).apply()
+                        }
+                        if (destination != "Phone") {
+                            SwitchRow("Also keep a copy on this phone", keepPhone) {
+                                keepPhone = it
+                                p.edit().putBoolean("store_phone", it).apply()
+                            }
+                            Text(if (keepPhone) "A phone copy is saved first. Remote backup can run when the destination is available."
+                                else "Server only. Connect to the selected destination before importing.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        var activeMethod by remember(destination) { mutableStateOf(p.getString("nas_method", "WebDAV") ?: "WebDAV") }
+                        var showMethodOptions by remember(destination) { mutableStateOf(false) }
+                        if (destination == "Secure Pocket Link") {
+                            Title("Secure Pocket Link connection")
+                            PrefField(p, "link_base", "Secure Pocket Link URL")
+                            PrefField(p, "link_token", "Link token", true)
+                        }
+                        if (destination == "NAS") {
+                            Title("NAS connection")
+                            MethodSection("Connect with WebDAV", activeMethod == "WebDAV", showMethodOptions && activeMethod == "WebDAV") {
+                                val wasSelected = activeMethod == "WebDAV"
+                                activeMethod = "WebDAV"
+                                showMethodOptions = if (wasSelected) !showMethodOptions else true
+                                p.edit().putString("nas_method", activeMethod).apply()
+                            }
+                            MethodSection("Connect through Secure Pocket Link", activeMethod == "Secure Pocket Link", showMethodOptions && activeMethod == "Secure Pocket Link") {
+                                val wasSelected = activeMethod == "Secure Pocket Link"
+                                activeMethod = "Secure Pocket Link"
+                                showMethodOptions = if (wasSelected) !showMethodOptions else true
+                                p.edit().putString("nas_method", activeMethod).apply()
+                            }
+                            if (showMethodOptions && activeMethod == "WebDAV") {
+                                Text("Use a writable WebDAV folder on your NAS.", style = MaterialTheme.typography.bodyMedium)
+                                PrefField(p, "nas_url", "WebDAV folder URL")
+                                PrefField(p, "nas_user", "NAS username")
+                                PrefField(p, "nas_token", "NAS password", true)
+                            } else if (showMethodOptions && activeMethod == "Secure Pocket Link") {
+                                Text("Choose this when Secure Pocket Link runs on a PC connected to your NAS.", style = MaterialTheme.typography.bodyMedium)
+                                PrefField(p, "nas_url", "Secure Pocket Link URL")
+                                PrefField(p, "nas_token", "Link token", true)
+                            }
+                            PrefField(p, "nas_ssid", "Only sync on this Wi-Fi network")
+                            val permission = androidx.activity.compose.rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+                            ) { Graph.backup.request() }
+                            val context = LocalContext.current
+                            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {
+                                permission.launch(arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION))
+                            }) { Text("Allow Wi-Fi name access") }
+                            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", context.packageName, null)))
+                            }) { Text("Set background permission") }
+                            Text("Needed for automatic backups while the app is closed.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (destination != "Phone") {
+                            val status by Graph.backup.status.collectAsState()
+                            val scope = rememberCoroutineScope()
+                            var connectionStatus by remember { mutableStateOf("") }
+                            val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
+                            val backupSettingsChanged = backupKeys.any { saved.all[it] != p.all[it] }
+                            val savedDestination = saved.getString("library_destination", "Phone") ?: "Phone"
+                            val savedHasPhoneCopy = saved.getBoolean("store_phone", true)
+                            Text("Test connection checks these current settings. Save before imports or backups use them.", style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {
+                                connectionStatus = "Testing connection…"
+                                scope.launch {
+                                    val problem = Graph.backup.validateImportDestination(p)
+                                    connectionStatus = problem ?: "Connection successful. Save settings to use this destination."
+                                }
+                            }) { Text("Test connection") }
+                            if (connectionStatus.isNotBlank()) Text(connectionStatus, style = MaterialTheme.typography.bodySmall)
+                            Button(modifier = Modifier.fillMaxWidth(), enabled = status != "Checking library…" &&
+                                savedDestination != "Phone" && savedHasPhoneCopy && !backupSettingsChanged, onClick = {
+                                scope.launch { Graph.backup.sync(force = true) }
+                            }) { Text("Back up now · saved settings") }
+                            if (backupSettingsChanged || !savedHasPhoneCopy || savedDestination == "Phone")
+                                Text("Save settings with a phone copy enabled to back up the library.", style = MaterialTheme.typography.bodySmall)
+                            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    3 -> {
+                        Title("Appearance")
+                        Text("Choose the app color theme.", style = MaterialTheme.typography.bodyMedium)
+                        Choice(p, "app_theme", "Color theme", listOf("dark", "light"))
+                        HorizontalDivider()
+                        Title("About")
+                        Text("Secure Pocket ${BuildConfig.VERSION_NAME}", style = LabelSm)
+                    }
                 }
             }
-            Row(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(vertical = 10.dp)) {
-                Text("THEME", style = LabelCaps.copy(color = SlateText), modifier = Modifier.weight(1f))
-                Text("OBSIDIAN WHISPER · DARK ONLY v0.1", style = LabelSm.copy(color = SlateText))
-            }
-            Row(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(vertical = 10.dp)) {
-                Text("BUILD", style = LabelCaps.copy(color = SlateText), modifier = Modifier.weight(1f))
-                Text("${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}", style = LabelSm.copy(color = Emerald))
-            }
-            Row(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(vertical = 10.dp)) {
-                Text("NETWORK", style = LabelCaps.copy(color = SlateText), modifier = Modifier.weight(1f))
-                Text("OPT-IN — dormant until you configure a provider", style = LabelSm.copy(color = SlateText))
-            }
         }
-        Spacer(Modifier.height(24.dp))
+        Button(modifier = Modifier.fillMaxWidth(), onClick = {
+            val changes = p.all
+            val previous = saved.all
+            val editor = saved.edit()
+            changes.forEach { (key, value) ->
+                if (isSettingsPreference(key) && previous[key] != value) putPreference(editor, key, value)
+            }
+            if (editor.commit()) {
+                saveStatus = "Settings saved."
+                val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
+                if (backupKeys.any { previous[it] != changes[it] }) {
+                    Graph.backup.schedule()
+                    Graph.backup.request()
+                }
+            } else saveStatus = "Could not save settings. Try again."
+        }) { Text("Save settings") }
+        if (saveStatus.isNotBlank()) Text(saveStatus, style = MaterialTheme.typography.bodySmall)
     }
 }
 
-private data class Eng(val name: String, val key: String, val note: String)
+private fun copySettings(source: SharedPreferences, target: SharedPreferences) {
+    val editor = target.edit().clear()
+    source.all.forEach { (key, value) -> putPreference(editor, key, value) }
+    editor.apply()
+}
 
-@Composable
-private fun Section(title: String, sub: String, content: @Composable ColumnScope.() -> Unit) {
+private fun isSettingsPreference(key: String): Boolean = key in setOf(
+    "stt_provider", "stt_url", "stt_model", "stt_openai_token", "stt_token", "auto_transcribe",
+    "docling_mode", "docling_url", "docling_token", "allow_processing_servers", "llm_provider",
+    "llm_url", "llm_model", "auto_summary", "summary_points", "library_destination", "store_phone",
+    "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid", "app_theme",
+) || key.startsWith("llm_token_")
+
+private fun putPreference(editor: SharedPreferences.Editor, key: String, value: Any?) {
+    when (value) {
+        is String -> editor.putString(key, value)
+        is Boolean -> editor.putBoolean(key, value)
+        is Int -> editor.putInt(key, value)
+        is Long -> editor.putLong(key, value)
+        is Float -> editor.putFloat(key, value)
+        is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+    }
+}
+
+@Composable private fun Title(text: String) = Text(text, style = MaterialTheme.typography.titleLarge)
+@Composable private fun PrefField(p: SharedPreferences, key: String, label: String, secret: Boolean = false, default: String = "", enabled: Boolean = true) {
+    var value by remember(key) { mutableStateOf(p.getString(key,default).orEmpty()) }
+    OutlinedTextField(value, { value = it; p.edit().putString(key, it).apply() },
+        label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None)
+}
+@Composable private fun PrefSwitch(p: SharedPreferences, key: String, default: Boolean, label: String, enabled: Boolean = true) {
+    var checked by remember(key) { mutableStateOf(p.getBoolean(key, default)) }
+    SwitchRow(label, checked, enabled) { checked = it; p.edit().putBoolean(key, it).apply() }
+}
+@Composable private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+    }
+}
+
+@Composable private fun Choice(p: SharedPreferences, key: String, label: String, options: List<String>,
+    changed: () -> Unit = {}, enabled: Boolean = true): String {
+    var value by remember(key) { mutableStateOf(p.getString(key, options.first()) ?: options.first()) }
     var open by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Column {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text(value.replaceFirstChar { it.uppercase() }, modifier = Modifier.weight(1f))
+            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Choose $label")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(text = { Text(option) }, onClick = {
+                    value = option
+                    p.edit().putString(key, option).apply()
+                    open = false
+                    changed()
+                })
+            }
+        }
+    }
+    return value
+}
+
+@Composable private fun DestinationOption(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected, onClick = onClick)
+            Column(Modifier.padding(start = 6.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(detail, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable private fun MethodSection(title: String, selected: Boolean, expanded: Boolean, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        RadioButton(selected, onClick = onClick)
+        Text(title, modifier = Modifier.weight(1f))
+        Icon(if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+            contentDescription = if (expanded) "Collapse $title" else "Configure $title")
+    }
+}
+
+@Composable private fun LocalModelPicker() {
+    val context = LocalContext.current
+    val model = remember(context) { com.cairn.securepocket.vault.OnDeviceModel(context) }
+    val scope = rememberCoroutineScope()
+    var selectedName by remember { mutableStateOf(model.displayName.takeIf { model.file.isFile }) }
+    var error by remember { mutableStateOf("") }
+    var copying by remember { mutableStateOf(false) }
+    val select = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) scope.launch {
+            copying = true
+            error = ""
+            val result = withContext(Dispatchers.IO) { runCatching { model.import(uri) } }
+            if (result.isSuccess) selectedName = model.displayName
+            else error = "Import failed: ${result.exceptionOrNull()?.localizedMessage ?: "Could not read this model file."}"
+            copying = false
+        }
+    }
+    Text("Summaries run on this phone. Import a CPU-compatible MediaPipe .task model to enable local summaries.")
+    if (selectedName != null) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = LabelCaps.copy(color = SlateText))
-                Text(sub, style = MaterialTheme.typography.bodyMedium, color = OpticalWhite)
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("SELECTED MODEL", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(selectedName!!, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Ready for on-device summaries", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = SlateText,
-                modifier = Modifier.graphicsLayer { rotationZ = if (open) 90f else 0f })
         }
-        if (open) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
-            Spacer(Modifier.height(10.dp))
-        }
-    }
-}
-
-@Composable
-private fun EngineList(p: android.content.SharedPreferences, section: String, engines: List<Eng>) {
-    val orderKey = "${section}_order"
-    val order = remember { mutableStateOf(loadOrder(p, section, engines)) }
-    val setOrder: (List<String>) -> Unit = { o ->
-        order.value = o
-        p.edit().putString(orderKey, JSONArray(o).toString()).apply()
-    }
-    engines.forEachIndexed { idx, e ->
-        val on = p.getBoolean("${e.key}_on", false)
-        Column(Modifier.fillMaxWidth().border(1.dp, Hairline).padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${idx + 1}", style = LabelSm.copy(color = SlateText), modifier = Modifier.padding(end = 10.dp))
-                Text(e.name, style = MaterialTheme.typography.bodyMedium, color = OpticalWhite, modifier = Modifier.weight(1f))
-                Switch(
-                    checked = on,
-                    onCheckedChange = { v -> p.edit().putBoolean("${e.key}_on", v).apply() },
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = Emerald.copy(alpha = 0.5f),
-                        checkedThumbColor = Emerald,
-                        uncheckedTrackColor = Hairline,
-                        uncheckedThumbColor = SlateText,
-                    ),
-                )
-            }
-            Text(e.note, style = LabelSm.copy(color = SlateText))
-            if (on) {
-                if (e.key.contains("http") || e.key == "ollama" || e.key == "local_whispercpp" || e.key == "local_vosk") {
-                    Field(p, "${e.key}_url", if (e.key == "ollama") "HOST:PORT" else "ENDPOINT URL", "http://…")
-                }
-                if (e.key == "openai" || e.key == "anthropic" || e.key == "openrouter" || e.key == "assemblyai" || e.key == "deepgram") {
-                    Field(p, "${e.key}_key", "API KEY", "paste key")
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GhostBtn("UP") { move(order.value, engines.map { it.key }, e.key, -1, setOrder) }
-                    GhostBtn("DOWN") { move(order.value, engines.map { it.key }, e.key, +1, setOrder) }
-                }
+    } else {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("No model selected", style = MaterialTheme.typography.titleSmall)
+                Text("Choose a .task file to enable local summaries.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
-}
-
-private fun loadOrder(p: android.content.SharedPreferences, section: String, engines: List<Eng>): List<String> {
-    val raw = p.getString("${section}_order", null) ?: return engines.map { it.key }
-    val keys = runCatching {
-        val a = JSONArray(raw)
-        (0 until a.length()).map { a.getString(it) }
-    }.getOrDefault(emptyList())
-    return (keys.filter { k -> engines.any { it.key == k } } + engines.map { it.key }.filter { it !in keys })
-}
-
-private fun move(order: List<String>, all: List<String>, key: String, delta: Int, set: (List<String>) -> Unit) {
-    val list = order.toMutableList()
-    val i = list.indexOf(key)
-    val j = i + delta
-    if (i < 0 || j < 0 || j >= list.size) return
-    val t = list[i]; list[i] = list[j]; list[j] = t
-    set(list)
-}
-
-@Composable
-private fun GhostBtn(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        style = LabelCaps.copy(color = OpticalWhite),
-        modifier = Modifier.border(1.dp, Hairline).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp),
-    )
-}
-
-@Composable
-private fun Field(p: android.content.SharedPreferences, key: String, label: String, placeholder: String) {
-    var text by remember { mutableStateOf(p.getString(key, "") ?: "") }
-    Column(Modifier.fillMaxWidth()) {
-        Text(label, style = LabelCaps.copy(color = SlateText))
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it; p.edit().putString(key, it).apply() },
-            singleLine = true,
-            textStyle = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = OpticalWhite),
-            modifier = Modifier.fillMaxWidth().border(1.dp, Hairline).padding(horizontal = 10.dp, vertical = 10.dp),
-            decorationBox = { inner ->
-                if (text.isEmpty()) Text(placeholder, style = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = SlateText))
-                inner()
-            },
-        )
+    Button(enabled = !copying, onClick = { select.launch(arrayOf("*/*")) }) {
+        Text(if (copying) "Importing model…" else if (selectedName == null) "Choose model file" else "Change model")
     }
-}
-
-@Composable
-private fun ToggleRow(p: android.content.SharedPreferences, key: String, label: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = OpticalWhite, modifier = Modifier.weight(1f))
-        Switch(
-            checked = p.getBoolean(key, false),
-            onCheckedChange = { v -> p.edit().putBoolean(key, v).apply() },
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = Emerald.copy(alpha = 0.5f),
-                checkedThumbColor = Emerald,
-                uncheckedTrackColor = Hairline,
-                uncheckedThumbColor = SlateText,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun Radio(p: android.content.SharedPreferences, key: String, value: String, label: String) {
-    val sel = p.getString(key, "none") == value
-    Row(Modifier.fillMaxWidth().clickable { p.edit().putString(key, value).apply() }.padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(if (sel) "●" else "○", style = LabelSm.copy(color = if (sel) Emerald else SlateText), modifier = Modifier.padding(end = 10.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = if (sel) OpticalWhite else SlateText)
-    }
-}
-
-@Composable
-private fun PhoneFolder(p: android.content.SharedPreferences) {
-    val ctx = LocalContext.current
-    var tree by remember { mutableStateOf(Uri.parse(p.getString("sync_tree", null) ?: "") .let { if (it.toString().isEmpty()) null else it }) }
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            runCatching {
-                ctx.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-            }
-            tree = uri
-            p.edit().putString("sync_tree", uri.toString()).apply()
-        }
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(tree?.lastPathSegment ?: "no folder picked", style = LabelSm.copy(color = SlateText), modifier = Modifier.weight(1f))
-        GhostBtn("PICK FOLDER") { pick.launch(null) }
-    }
-}
-
-@Composable
-private fun LinkTest(p: android.content.SharedPreferences) {
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var msg by remember { mutableStateOf("TAP TO PING LINK SERVER") }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(msg, style = LabelSm.copy(color = SlateText), modifier = Modifier.weight(1f))
-        GhostBtn("TEST") {
-            var url = (p.getString("link_base", "") ?: "").trim().trimEnd('/')
-            val tok = (p.getString("link_token", "") ?: "").trim()
-            if (url.isEmpty()) { msg = "NO ADDRESS SET"; return@GhostBtn }
-            url += "/health" + if (tok.isNotEmpty()) "?k=$tok" else ""
-            msg = "PINGING…"
-            scope.launch(Dispatchers.IO) {
-                val code = runCatching {
-                    val con = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                    con.connectTimeout = 4000; con.readTimeout = 4000
-                    con.requestMethod = "GET"
-                    con.responseCode
-                }.getOrDefault(-1)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    msg = if (code in 200..399) "LINK ALIVE · HTTP $code" else "LINK UNREACHABLE · HTTP $code"
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DoclingTest(p: android.content.SharedPreferences) {
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var msg by remember { mutableStateOf("TAP TO PING SERVER") }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(msg, style = LabelSm.copy(color = SlateText), modifier = Modifier.weight(1f))
-        GhostBtn("TEST") {
-            val url = (p.getString("docling_url", "") ?: "").trim()
-            if (url.isEmpty()) { msg = "NO URL SET"; return@GhostBtn }
-            msg = "PINGING…"
-            scope.launch(Dispatchers.IO) {
-                val code = runCatching {
-                    val con = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                    con.connectTimeout = 4000; con.readTimeout = 4000
-                    con.requestMethod = "GET"
-                    con.responseCode
-                }.getOrDefault(-1)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    msg = if (code in 200..399) "SERVER ALIVE · HTTP $code" else "UNREACHABLE · HTTP $code"
-                }
-            }
-        }
-    }
+    if (copying) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+    if (selectedName != null) TextButton(enabled = !copying, onClick = {
+        model.remove()
+        selectedName = null
+        error = ""
+    }) { Text("Remove local model") }
 }

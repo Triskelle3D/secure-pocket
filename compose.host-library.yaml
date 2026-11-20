@@ -1,0 +1,10 @@
+# Optional override for users who want the Link library at a chosen host path.
+# Keep compose.yaml's named volume when no host directory is needed.
+services:
+  link:
+    volumes:
+      - type: bind
+        source: ${LINK_LIBRARY_HOST_PATH:?Set LINK_LIBRARY_HOST_PATH to an absolute host directory}
+        target: /data
+        bind:
+          create_host_path: true

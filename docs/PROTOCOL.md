@@ -3,7 +3,7 @@
 
 Transport: BLE, central writes commands to char 001120a2 (WRITE/WRITE_NO_RESPONSE, handle 0x2B);
 device replies/events as notifications on 001120a3 (handle 0x30) and 001120a1 (handle 0x2D, CCC 0x2E).
-Padding: commands are zero-padded; ATT-level length follows.
+Use acknowledged writes containing exactly the ASCII command bytes. In br14 an APP&BAT write has a seven-byte value and a ten-byte ATT PDU.
 Commands are prefixed "APP&", responses "MCU&", tokens joined by '&'.
 
 ## Command/Response table (observed)
@@ -41,15 +41,15 @@ Commands are prefixed "APP&", responses "MCU&", tokens joined by '&'.
 - MCU&OFF — device powering link off / sleep
 - MCU&BAT&<n>, MCU&REC&CON…"..."… (recording-in-progress w/ extra fields)
 
-## File transfer
-- BLE pipes present, binary, length-prefixed (first writes observed: pipe B e49a25e0 h=0x28:
-  <len u32-LE?>-style frames "4c53.. 0a 00 00 00 0a 00 00 00 01 00 00").
-- This session showed WIFIS/WIFIC/WIFIO around the sync = device prefers Wi-Fi offload path;
-  no bulk MP3 chunks seen on BLE => need capture where sync definitely goes over BLE (kill phone Wi-Fi).
-- MP3 validation strings in app => files arrive as MP3.
+## File transfer (Galaxy S20 and PKT01, firmware 1.8.9)
 
-## Proven facts
-- No authentication: unbonded connect + command accepted (probe 0x00 was silently ignored = device validates commands, not the central).
+Subscribe to a3 for control messages and a1 for audio. Wait for each CCCD write callback. The app uses a stable install identifier in the session handshake and waits for the recorder to confirm it. On a previously paired unit, Android completed service discovery but the recorder disconnected during the handshake. After the owner reset the device, setup and subsequent reconnects succeeded with the same app identifier. A reset erases recordings.
+
+List date directories, then list each date. Preserve the identifier in each file entry exactly, including the PH prefix on Call recordings. Request a stored file with the date and original identifier. The U reply gives its size and starts playback of the file bytes on a1. Append exactly that many bytes before publishing the MP3. A U request is therefore a transfer, including when a client only wants the size.
+
+The S20 imported a 16,028-byte Conversation recording and a 40,074-byte Call recording. The Conversation import matched the SHA-256 of the live capture. Both file transfers preserved the source recording on the Pocket.
+
+## Device observations
 - Device is a listener; zero traffic until addressed. Re-estabs => 8 indication-acks (CCCD chatter) + device-info reads only.
 - Firmware 1.8.9 (matches docs' Wi-Fi-upload requirement >=1.8.5).
 
@@ -65,10 +65,15 @@ Commands are prefixed "APP&", responses "MCU&", tokens joined by '&'.
   → then APP&BAT poll every ~1 s while foreground; APP&WPING keepalives.
 - Official app AUTO-RECONNECTS: force-stop is not enough — it grabbed the device ~10 s into our
   health macro mid-run. Kill/flight-mode it before ANY BLE session of our own.
-- APP&SK&<16char> → MCU&SK&OK: app tags a session key; NOT enforced (full command set works without SK).
+- APP&SK&<16char> → MCU&SK&OK confirms the application session. Keep the identifier stable across reconnects.
 - btsnoop method lesson: Samsung/BCM log (datalink 1002) has vendor ts prefix that breaks strict
   record-walkers. Use pattern+printable-run extraction: regex b'\x04\x00\x1b' (notify) /
   b'\x04\x00\x12' (write), value = printable ASCII from match+5. Handles re-enumerate per
   connection (responses seen on 0x2a as well as 0x2d/0x30) — filter by VALUE, not handle.
 - UNANSWERED over BLE so far: LNS&, LNP&, SCHED&LIST, WSCAN, WIFIP(&CLR), D&<date>&<ts> (delete —
   do NOT issue without explicit owner OK; junk file only, and only after isolation confirmed).
+
+
+## Single-file deletion
+
+The archived official-app capture br14 records an acknowledged write on a2 containing `APP&D&2026-11-18&20261118083337` and a subsequent `MCU&D` notification on a3. The file identifier never appears again in the capture despite subsequent inventory requests. Firmware strings also define `MCU&D&ERR`. Secure Pocket requires a verified local copy with matching bytes from a fresh transfer and checks the resulting file list before reporting success.

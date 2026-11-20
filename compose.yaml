@@ -1,0 +1,62 @@
+services:
+  link:
+    build:
+      context: ./link-server
+    ports:
+      # Android / LAN API. Override LINK_PUBLIC_API_PORT for test runs if occupied.
+      - "${LINK_PUBLIC_API_PORT:-8732}:8732"
+      # Desktop settings UI is reachable only from this computer.
+      - "127.0.0.1:${LINK_PUBLIC_ADMIN_PORT:-8733}:8733"
+    environment:
+      LINK_PUBLIC_API_PORT: "${LINK_PUBLIC_API_PORT:-8732}"
+      LINK_PUBLIC_ADMIN_PORT: "${LINK_PUBLIC_ADMIN_PORT:-8733}"
+      LINK_PUBLIC_HOST: "${LINK_PUBLIC_HOST:-}"
+      LINK_DEFAULT_LIBRARY_ROOT: /data
+      LINK_DEFAULT_DOCLING_URL: http://docling:5001
+      LINK_DEFAULT_DOCLING_ENABLED: "true"
+    volumes:
+      - link-library:/data
+      - link-config:/config
+    depends_on:
+      docling:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  docling:
+    # Thin adapter image: pinned official Docling Serve base plus upstream ASR extra.
+    image: secure-pocket-docling-serve:1.38.2-audio
+    build:
+      context: ./link-server
+      dockerfile: Dockerfile.docling
+    environment:
+      DOCLING_DEVICE: cpu
+      DOCLING_SERVE_ENABLE_UI: "false"
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: "5001"
+      HOME: /models
+      HF_HOME: /models/huggingface
+    volumes:
+      - docling-models:/models
+    expose:
+      - "5001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=5).read()"
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 45s
+    restart: unless-stopped
+
+volumes:
+  link-library:
+  link-config:
+  docling-models:

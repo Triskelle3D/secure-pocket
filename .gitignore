@@ -2,6 +2,8 @@ build/
 .gradle/
 local.properties
 tools-dist/
+/dist/
+/SecurePocketLink.spec
 *.zip
 .idea/
 *.iml
@@ -10,3 +12,8 @@ tools-dist/
 __pycache__/
 *.pyc
 link-server/testdata/
+!app/src/main/assets/vosk-model-small-en-us-0.15.zip
+/app/src/main/assets/models/*.task
+/*.task
+
+!app/src/main/assets/vosk-model-spk-0.4.zip

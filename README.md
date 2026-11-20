@@ -19,6 +19,14 @@ Build with JDK 17 and Android SDK 36. From this checkout:
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Run Android validation on an attached, unlocked device with:
+
+```sh
+./gradlew :app:testValidationUnitTest :app:connectedValidationAndroidTest
+```
+
+The `validation` build type uses the separate application ID `com.cairn.securepocket.isotest`, so connected tests keep the production app's data intact. The normal `debug` build keeps `com.cairn.securepocket`.
+
 On Windows, use `gradlew.bat :app:assembleDebug`. Open **Device → Connect Pocket**, then expand **Recordings on Pocket** to import a saved recording. **Library** has separate transcript and summary views.
 
 ### Library location

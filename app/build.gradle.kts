@@ -16,7 +16,15 @@ android {
     versionName = "1.7"
   }
 
+  // Instrumentation uses a separate package so it cannot replace a user's app data.
+  testBuildType = "validation"
+
   buildTypes {
+    create("validation") {
+      initWith(getByName("debug"))
+      applicationIdSuffix = ".isotest"
+      matchingFallbacks += listOf("debug")
+    }
     release {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -70,6 +78,7 @@ dependencies {
   implementation("androidx.compose.material:material-icons-extended")
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
+  add("validationImplementation", libs.androidx.compose.ui.test.manifest)
   // Instrumented tests
   androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   debugImplementation(libs.androidx.compose.ui.test.manifest)

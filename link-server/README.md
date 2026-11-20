@@ -24,6 +24,8 @@ The first run creates a token and settings file automatically. Defaults are:
 
 The initial recording destination is `~/Secure Pocket Library`. In Link settings, replace it with an absolute path to any writable folder. A mounted NAS share works too; mount it before starting Link so that the selected path points to the share. The config file is stored separately from the recording destination.
 
+The settings page shows Link uptime, whether the phone API listener is running, the LAN address when available, backup-folder readiness, and a quick recording count. Status refreshes while the page is visible without changing unsaved settings. The recent activity panel keeps up to 200 in-memory request events until Link exits; it omits tokens, request data, recording names, and file paths. Use **Check Docling** for an explicit health request with a 2.5-second timeout. A successful health response confirms the service answered, but does not verify model downloads or a full conversion.
+
 ## Pair the phone
 
 In Secure Pocket, open **Settings → Library location → Secure Pocket Link**. Use the computer's name or local IP with port `8732`, such as `http://studio-pc:8732`, then enter the token from the settings page and tap **Test connection**. Both devices need access to the same Wi-Fi or tailnet. The token protects library reads and writes.

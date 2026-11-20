@@ -9,6 +9,8 @@ Stdlib only. The phone API binds 0.0.0.0 (LAN + tailscale reachable) and always
 requires the shared token shown in the localhost settings page.
 """
 import argparse
+from collections import deque
+from datetime import datetime, timezone
 import secrets
 import hashlib
 import json
@@ -26,6 +28,8 @@ import zipfile
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 ROOT = os.path.expanduser("~/secure-pocket-link/inbox")
 TOKEN = None
@@ -40,6 +44,78 @@ DOCLING_SLOT = threading.BoundedSemaphore(1)
 CONFIG_LOCK = threading.RLock()
 LIBRARY_WRITE_LOCK = threading.RLock()
 BUNDLE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}-[a-f0-9]{8}\.zip")
+STARTED_AT = time.time()
+DIAGNOSTIC_LOG = deque(maxlen=200)
+DIAGNOSTIC_LOCK = threading.Lock()
+LAST_ACTIVITY = None
+
+
+def _timestamp(value=None):
+    return datetime.fromtimestamp(value or time.time(), timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _library_count():
+    """Count recordings from directory entries only; status checks must not hash audio."""
+    count = 0
+    try:
+        with os.scandir(ROOT) as entries:
+            count += sum(1 for entry in entries if entry.is_file() and entry.name.lower().endswith(".mp3"))
+    except OSError:
+        return 0
+    library = Path(ROOT) / "library"
+    try:
+        with os.scandir(library) as entries:
+            count += sum(1 for entry in entries if entry.is_file() and BUNDLE.fullmatch(entry.name))
+    except OSError:
+        pass
+    return count
+
+
+def _record_log(level, method, endpoint, status, message):
+    global LAST_ACTIVITY
+    item = {"at": _timestamp(), "level": level, "method": method,
+            "endpoint": endpoint, "status": int(status), "message": message}
+    with DIAGNOSTIC_LOCK:
+        DIAGNOSTIC_LOG.appendleft(item)
+        if not endpoint.startswith("/admin/"):
+            LAST_ACTIVITY = item["at"]
+
+
+def _log_endpoint(path):
+    if path in ("/health", "/index.json", "/library/import", "/docling/pre", "/docling/post",
+                "/admin/api/settings", "/admin/api/docling-check"):
+        return path
+    if path.startswith("/library/"):
+        return "/library/{bundle}"
+    if path.startswith("/file/"):
+        return "/file/{item}"
+    if path.startswith("/admin/"):
+        return "/admin/{other}"
+    return "/other"
+
+
+def _log_method(method):
+    method = str(method or "").upper()
+    return method if method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS") else "OTHER"
+
+
+def _docling_probe(config):
+    """Make one bounded request to Docling's health endpoint; never return its URL."""
+    if not config.get("enabled"):
+        return {"state": "disabled", "checkedAt": None}
+    base = str(config.get("docling_url") or "http://docling:5001").strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        return {"state": "unreachable", "checkedAt": _timestamp(), "detail": "Invalid service address"}
+    try:
+        request = Request(base + "/health", headers={"Accept": "application/json"}, method="GET")
+        with urlopen(request, timeout=2.5) as response:
+            return {"state": "reachable" if 200 <= response.status < 300 else "unreachable",
+                    "httpStatus": response.status, "checkedAt": _timestamp()}
+    except HTTPError as exc:
+        return {"state": "degraded", "httpStatus": int(exc.code), "checkedAt": _timestamp(),
+                "detail": "Service replied, but its health check did not succeed"}
+    except (URLError, TimeoutError, OSError, ValueError):
+        return {"state": "unreachable", "checkedAt": _timestamp(), "detail": "No response within 2.5 seconds"}
 
 
 def stream_sha(stream):
@@ -126,7 +202,7 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_PUT(self):
-        path = urlparse(self.path).path
+        path = urlparse(getattr(self, "path", "")).path
         name = path.removeprefix("/library/")
         if not path.startswith("/library/") or not BUNDLE.fullmatch(name):
             return self._json(404, {"error": "Unknown library path"})
@@ -180,6 +256,10 @@ class Handler(BaseHTTPRequestHandler):
             if not getattr(self.server, "is_admin", False):
                 return self._json(404, {"error": "Unknown path"})
             return self._admin_save()
+        if path == "/admin/api/docling-check":
+            if not getattr(self.server, "is_admin", False):
+                return self._json(404, {"error": "Unknown path"})
+            return self._admin_docling_check()
         if path == "/library/import":
             return self._import_recording()
         if path not in ("/docling/pre", "/docling/post"):
@@ -201,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
                     payload["segments"] = result["segments"]
                 return self._json(200, payload)
             except Exception as exc:
-                sys.stderr.write(f"[link] Docling failed: {exc}\n")
+                sys.stderr.write("[link] Docling processing failed\n")
                 return self._json(502, {"error": "Docling processing failed. Check its settings and model files."})
 
     def _import_recording(self):
@@ -285,6 +365,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._admin_settings()
             if u.path == "/admin/api/status":
                 return self._admin_status()
+            if u.path == "/admin/api/logs":
+                return self._admin_logs()
             return self._json(404, {"error": "Unknown settings path"})
         qs = parse_qs(u.query)
         if not self._check(qs):
@@ -388,10 +470,48 @@ class Handler(BaseHTTPRequestHandler):
     def _admin_status(self):
         if not self._admin_request_allowed(data_request=True):
             return self._json(403, {"error": "Settings are available only from this computer"})
-        return self._json(200, {"ok": True, "root": ROOT, "exists": os.path.isdir(ROOT),
-                                "writable": os.access(ROOT, os.W_OK),
-                                "files": len(scan()), "authenticated": bool(TOKEN),
-                                "docling": bool(DOCLING_CONFIG.get("enabled"))})
+        api_server = getattr(self.server, "api_server", None)
+        api_thread = getattr(self.server, "api_thread", None)
+        listener_running = bool(api_server and api_thread and api_thread.is_alive())
+        lan_host = _pairing_host()
+        exists = os.path.isdir(ROOT)
+        writable = exists and os.access(ROOT, os.W_OK)
+        with DIAGNOSTIC_LOCK:
+            last_activity = LAST_ACTIVITY
+        configured_docling = bool(str(DOCLING_CONFIG.get("docling_url") or "").strip())
+        return self._json(200, {
+            "ok": True,
+            "uptimeSeconds": max(0, int(time.time() - STARTED_AT)),
+            "apiListener": {"running": listener_running,
+                             "address": f"{_url_host(lan_host)}:{PUBLIC_API_PORT}" if lan_host else None,
+                             "port": PUBLIC_API_PORT},
+            "backup": {"root": ROOT, "exists": exists, "writable": writable,
+                       "ready": exists and writable, "recordings": _library_count()},
+            "authenticated": bool(TOKEN),
+            "docling": {"enabled": bool(DOCLING_CONFIG.get("enabled")),
+                        "configured": configured_docling,
+                        "usingDefault": not configured_docling},
+            "lastActivity": last_activity,
+        })
+
+    def _admin_logs(self):
+        if not self._admin_request_allowed(data_request=True):
+            return self._json(403, {"error": "Settings are available only from this computer"})
+        with DIAGNOSTIC_LOCK:
+            events = list(DIAGNOSTIC_LOG)
+        return self._json(200, {"events": events})
+
+    def _admin_docling_check(self):
+        if not self._admin_request_allowed(data_request=True):
+            return self._json(403, {"error": "Settings are available only from this computer"})
+        # Copy under lock so a concurrent save cannot mutate the probe configuration.
+        with CONFIG_LOCK:
+            config = dict(DOCLING_CONFIG)
+        result = _docling_probe(config)
+        result.update({"enabled": bool(config.get("enabled")),
+                       "configured": bool(str(config.get("docling_url") or "").strip()),
+                       "usingDefault": not bool(str(config.get("docling_url") or "").strip())})
+        return self._json(200, result)
 
     def _admin_save(self):
         global ROOT, TOKEN, DOCLING_CONFIG, CONFIG
@@ -435,6 +555,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": str(exc)})
 
     def _json(self, code, obj):
+        self._response_code = code
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -444,8 +565,53 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_response(self, code, message=None):
+        self._response_code = code
+        super().send_response(code, message)
+
+    def end_headers(self):
+        super().end_headers()
+        self._maybe_log_response()
+
+    def _maybe_log_response(self):
+        path = urlparse(getattr(self, "path", "")).path
+        status = getattr(self, "_response_code", 0)
+        if path in ("/health", "/index.json") and status < 400:
+            return
+        if path in ("/admin/", "/admin/api/status", "/admin/api/logs"):
+            return
+        if path == "/admin/api/settings" and getattr(self, "command", "") == "GET":
+            return
+        endpoint = _log_endpoint(path)
+        method = _log_method(getattr(self, "command", ""))
+        if status < 400 and (method == "GET" and endpoint == "/other"):
+            return
+        level = "ERROR" if status >= 500 else "WARNING" if status >= 400 else "INFO"
+        if status >= 500:
+            message = "Request failed on Link"
+        elif status >= 400:
+            message = "Request was rejected or could not be completed"
+        elif endpoint in ("/docling/pre", "/docling/post"):
+            message = "Docling request completed"
+        elif endpoint == "/admin/api/docling-check":
+            message = "Docling health check completed"
+        elif method in ("POST", "PUT"):
+            message = "Library or settings change completed"
+        else:
+            message = "Library request completed"
+        _record_log(level, method, endpoint, status, message)
+
     def log_message(self, fmt, *args):
-        sys.stderr.write(f"[link] {self.command} {urlparse(self.path).path}\n")
+        # Keep terminal output private too: paths may contain recording titles or other data.
+        path = urlparse(getattr(self, "path", "")).path
+        if path in ("/admin/", "/admin/api/status", "/admin/api/logs"):
+            return
+        if path == "/admin/api/settings" and self.command == "GET":
+            return
+        if path in ("/health", "/index.json") and getattr(self, "_response_code", 0) < 400:
+            return
+        endpoint = _log_endpoint(path)
+        sys.stderr.write(f"[link] {_log_method(getattr(self, 'command', ''))} {endpoint}\n")
 
 def main():
     global TOKEN, ROOT, CONFIG_PATH, CONFIG, DOCLING_CONFIG, ADMIN_PORT
@@ -490,10 +656,13 @@ def main():
     api.api_port = a.port
     admin.api_port = a.port
     admin.is_admin = True
+    admin.api_server = api
     print(f"Secure Pocket Link library: {ROOT}")
     print(f"Android API: http://0.0.0.0:{a.port} (token protected)")
     print(f"Settings: http://127.0.0.1:{a.admin_port}/admin/")
-    threading.Thread(target=api.serve_forever, name="pocket-link-api", daemon=True).start()
+    api_thread = threading.Thread(target=api.serve_forever, name="pocket-link-api", daemon=True)
+    admin.api_thread = api_thread
+    api_thread.start()
     admin.serve_forever()
 
 

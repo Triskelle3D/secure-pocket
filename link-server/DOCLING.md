@@ -50,6 +50,13 @@ audio response preserves Docling's Markdown and includes timestamped segments
 when its ASR output contains timestamps. Model availability depends on first
 download completing and network access to upstream model hosting.
 
+The local Link settings page shows whether Docling is enabled and whether a
+custom service address is configured. **Check Docling** makes one bounded
+request to the configured service's `/health` endpoint (or the default address)
+with a 2.5-second timeout. A healthy response confirms reachability only; a
+non-success response is shown as degraded, and the check does not validate
+models or run a conversion.
+
 To stop the containers while retaining data, run `docker compose down`. To
 remove the library, settings, and downloaded model cache as well, run
 `docker compose down --volumes`.

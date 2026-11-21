@@ -8,9 +8,10 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.util.UUID
 
-internal fun endpoint(base: String, path: String): HttpURLConnection {
+internal fun endpoint(base: String, path: String, tlsIdentityHost: String? = null): HttpURLConnection {
     val url = checkedRemoteUri(base.trim().trimEnd('/') + path)
     return (url.toURL().openConnection() as HttpURLConnection).apply {
+        useTlsIdentity(this, tlsIdentityHost)
         instanceFollowRedirects = false
         connectTimeout = 8000
         readTimeout = 240000
@@ -42,9 +43,12 @@ internal class ProcessingProviders(private val p: SharedPreferences, private val
 
     private fun postDocling(path: String, type: String, file: File?, text: String?): String {
         var failure: Exception? = null
-        for (base in doclingBases()) {
+        val bases = doclingBases()
+        val tlsIdentity = runCatching { URI(get("docling_url")).host }.getOrNull()
+        for (base in bases) {
             try {
-                return post(endpoint(base, path), type, file, text, get("docling_token"), "X-Pocket-Token")
+                val identity = if (base == get("docling_local_url")) tlsIdentity else null
+                return post(endpoint(base, path, identity), type, file, text, get("docling_token"), "X-Pocket-Token")
             } catch (e: Exception) {
                 if (e.message?.contains("HTTP 401") == true || e.message?.contains("HTTP 403") == true) throw e
                 failure = e

@@ -92,6 +92,7 @@ class LibraryBackup(private val context: Context) {
             val path = if (method == "WebDAV") "/" else "/health"
             val url = checkedRemoteUri(base + path)
             val connection = ((network?.openConnection(url.toURL()) ?: url.toURL().openConnection()) as HttpURLConnection)
+            useTlsIdentity(connection, tlsFallbackIdentity(bases))
             try {
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = 5000
@@ -153,11 +154,12 @@ class LibraryBackup(private val context: Context) {
             val token = p.getString(if (nas) "nas_token" else "link_token", "").orEmpty()
             val user = p.getString("nas_user", "").orEmpty()
             val webdav = method == "WebDAV"
+            val tlsIdentity = tlsFallbackIdentity(bases)
             var failure: Exception? = null
             for (base in bases) try {
-                Graph.link.preflightPocketUpload(base, token, webdav, user, token)
+                Graph.link.preflightPocketUpload(base, token, webdav, user, token, tlsIdentity)
                 return@withContext Graph.link.uploadPocketRecording(audio, item.date, item.startAt, item.wireId,
-                    sha256, base, token, webdav, user, token)
+                    sha256, base, token, webdav, user, token, tlsIdentity)
             } catch (e: Exception) {
                 if (e.message?.contains("rejected the configured credentials") == true) throw e
                 failure = e
@@ -215,8 +217,9 @@ class LibraryBackup(private val context: Context) {
                     if (nas) check(homeNetwork() == network) { "Home Wi-Fi disconnected." }
                     var failure: Exception? = null
                     var uploaded = false
+                    val tlsIdentity = tlsFallbackIdentity(bases)
                     for (base in bases) try {
-                        upload(rec, mode == "WebDAV", base, token, user, network)
+                        upload(rec, mode == "WebDAV", base, token, user, network, tlsIdentity)
                         uploaded = true
                         break
                     } catch (e: Exception) {
@@ -232,7 +235,8 @@ class LibraryBackup(private val context: Context) {
         }
     }
 
-    private fun upload(rec: VaultStore.Record, webdav: Boolean, base: String, token: String, user: String, network: Network?) {
+    private fun upload(rec: VaultStore.Record, webdav: Boolean, base: String, token: String, user: String,
+        network: Network?, tlsIdentityHost: String?) {
         val bundle = File.createTempFile("pocket-", ".zip", context.cacheDir)
         var audioPlain: File? = null
         try {
@@ -253,6 +257,7 @@ class LibraryBackup(private val context: Context) {
             val path = if (webdav) "/$key.zip" else "/library/$key.zip"
             val url = checkedRemoteUri(base + path)
             val c = ((network?.openConnection(url.toURL()) ?: url.toURL().openConnection()) as HttpURLConnection)
+            useTlsIdentity(c, tlsIdentityHost)
             try {
                 c.instanceFollowRedirects = false
                 c.connectTimeout = 8000

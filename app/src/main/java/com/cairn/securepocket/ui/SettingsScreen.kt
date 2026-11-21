@@ -79,8 +79,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             PrefField(p, "docling_local_url", "Local Secure Pocket Link URL (preferred)")
                             PrefField(p, "docling_url", "Tailscale Secure Pocket Link URL (fallback)")
                             PrefField(p, "docling_token", "Link token", true)
-                            Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
-                            Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
+                            Text("Local URL: https://192.168.1.27:10444. Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. The app tries Swamp Hub over LAN first, then Tailscale. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
                         }
                         PrefSwitch(p, "allow_processing_servers", false, "Send audio or text to selected processing servers")
                     }
@@ -142,8 +141,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             PrefField(p, "link_local_url", "Local URL (preferred)")
                             PrefField(p, "link_base", "Tailscale URL (fallback)")
                             PrefField(p, "link_token", "Link token", true)
-                            Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
-                            Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
+                            Text("Local URL: https://192.168.1.58:10444. Tailscale URL: https://redacted-hostname.redacted-tailnet-name.ts.net:8443. The app tries the Mac over LAN first, then Tailscale. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (destination == "NAS") {
                             Title("NAS connection")
@@ -169,8 +167,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 PrefField(p, "nas_local_url", "Local URL (preferred)")
                                 PrefField(p, "nas_url", "Tailscale URL (fallback)")
                                 PrefField(p, "nas_token", "Link token", true)
-                                Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
-                                Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
+                                Text("Enter the NAS Link computer’s LAN IP and HTTPS port as Local URL. Put its HTTPS phone URL in Tailscale URL. The app tries local first. The local certificate must match the hostname in the Tailscale URL.", style = MaterialTheme.typography.bodySmall)
                             }
                             PrefField(p, "nas_ssid", "Only sync on this Wi-Fi network")
                             val permission = androidx.activity.compose.rememberLauncherForActivityResult(

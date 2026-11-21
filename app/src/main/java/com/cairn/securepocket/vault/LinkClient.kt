@@ -47,9 +47,9 @@ class LinkClient(context: Context) {
         (prefs.getString("library_destination", "Phone") == "Secure Pocket Link" || usesNasLink()) && baseUrl().isNotEmpty()
 
     fun preflightPocketUpload(baseUrl: String, token: String, webdav: Boolean,
-        username: String = "", password: String = "") {
+        username: String = "", password: String = "", tlsIdentityHost: String? = null) {
         val base = checkedBase(baseUrl)
-        val connection = if (webdav) endpoint(base, "/") else endpoint(base, "/health")
+        val connection = if (webdav) endpoint(base, "/", tlsIdentityHost) else endpoint(base, "/health", tlsIdentityHost)
         try {
             setCredentials(connection, token, webdav, username, password)
             connection.connectTimeout = 5000
@@ -67,7 +67,7 @@ class LinkClient(context: Context) {
 
     fun uploadPocketRecording(audio: File, date: LocalDate, startAt: LocalDateTime, wireId: String,
         sha256: String, baseUrl: String, token: String, webdav: Boolean,
-        username: String = "", password: String = ""): RemoteUploadResult {
+        username: String = "", password: String = "", tlsIdentityHost: String? = null): RemoteUploadResult {
         check(audio.isFile && audio.length() > 0) { "Downloaded recording is missing." }
         val actualSha = VaultStore.sha256(audio)
         check(actualSha.equals(sha256, ignoreCase = true)) { "Downloaded recording failed SHA-256 verification." }
@@ -85,10 +85,10 @@ class LinkClient(context: Context) {
                     zip.write("Recording $date ${time.take(2)}:${time.substring(2, 4)}".toByteArray())
                     zip.closeEntry()
                 }
-                putFile(base, "/$bundleName", bundle, token, true, username, password)
+                putFile(base, "/$bundleName", bundle, token, true, username, password, tlsIdentityHost)
             } finally { bundle.delete() }
         } else {
-            val connection = endpoint(base, "/library/import")
+            val connection = endpoint(base, "/library/import", tlsIdentityHost)
             try {
                 setCredentials(connection, token, false, username, password)
                 connection.connectTimeout = 8000
@@ -115,8 +115,8 @@ class LinkClient(context: Context) {
     }
 
     private fun putFile(base: String, path: String, file: File, token: String, webdav: Boolean,
-        username: String, password: String) {
-        val connection = endpoint(base, path)
+        username: String, password: String, tlsIdentityHost: String?) {
+        val connection = endpoint(base, path, tlsIdentityHost)
         try {
             setCredentials(connection, token, webdav, username, password)
             connection.connectTimeout = 8000
@@ -149,10 +149,12 @@ class LinkClient(context: Context) {
 
     private fun get(path: String, timeoutMs: Int = 6000): Pair<Int, ByteArray> {
         var lastError: Exception? = null
-        for (base in baseUrls()) {
+        val bases = baseUrls()
+        val tlsIdentityHost = tlsFallbackIdentity(bases)
+        for (base in bases) {
             var conn: HttpURLConnection? = null
             try {
-                val current = endpoint(base, path)
+                val current = endpoint(base, path, tlsIdentityHost)
                 conn = current
                 authToken().takeIf { it.isNotEmpty() }?.let { current.setRequestProperty("X-Pocket-Token", it) }
                 current.instanceFollowRedirects = false

@@ -13,7 +13,10 @@ __pycache__/
 *.pyc
 link-server/testdata/
 !app/src/main/assets/vosk-model-small-en-us-0.15.zip
-/app/src/main/assets/models/*.task
-/*.task
+# Downloaded local summary model weights
+*.task
+*.litertlm
+*.gguf
+*.safetensors
 
 !app/src/main/assets/vosk-model-spk-0.4.zip

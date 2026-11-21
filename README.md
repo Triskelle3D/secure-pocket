@@ -55,11 +55,11 @@ The v0.1.0 packages show the same information under **Link status**, **Pair your
 ### Other storage choices
 
 - **Phone** keeps the library and processing on Android when you choose on-device providers.
-- **NAS with WebDAV.** On Android, choose **NAS → Connect with WebDAV** and enter the writable folder URL and credentials.
+- **NAS with WebDAV.** On Android, choose **NAS → Connect with WebDAV** and enter the writable folder URL and credentials. The current Android build can fail the WebDAV connection check, which also blocks server-only imports. Use Link for server-only NAS storage.
 - **NAS with Samba/SMB.** Connect to the share from the computer running Link. In Link settings, choose the mounted folder as the library location. In Android, choose **NAS → Connect through Secure Pocket Link** and enter the Link URL and token.
 - **Server-only imports** are enabled by switching off **Also keep a copy on this phone**. New imports go to the selected server as audio and require it to be reachable at import time. Keep the switch on if you want Android to transcribe and summarize new recordings automatically.
 
-For either NAS option, enter your home Wi-Fi name, grant the permissions shown for Wi-Fi and scheduled backups, then test the connection and save. [How to mount an SMB share for Link](link-server/README.md#use-a-sambasmb-share)
+For either NAS option, enter your home Wi-Fi name and grant the permissions shown for Wi-Fi and scheduled backups. With Link, tap **Test connection**, then **Save settings**. [How to mount an SMB share for Link](link-server/README.md#use-a-sambasmb-share)
 
 ## 3. Add Docling for server processing
 

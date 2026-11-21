@@ -7,7 +7,7 @@ Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**.
 | I want to… | What I need |
 | --- | --- |
 | Import and play recordings, with optional offline transcription and summaries | [Secure Pocket for Android](#1-install-secure-pocket-on-android) and a Pocket recorder |
-| Back up to my computer or a mounted NAS folder | Android plus [Secure Pocket Link](#2-add-secure-pocket-link-for-backups) on Windows, Linux, Intel Mac, or Apple Silicon Mac |
+| Back up to my computer or a NAS, including Samba/SMB | Android plus [Secure Pocket Link](#2-add-secure-pocket-link-for-backups) on Windows, Linux, Intel Mac, or Apple Silicon Mac |
 | Use Docling to transcribe recordings or format summaries | Android plus [Link + Docling](#3-add-docling-for-server-processing), running in Docker Compose on a computer or server |
 
 **Start with Android.** Link is optional. The Docker stack includes Link, so it can handle both backups and Docling from the same installation. If your NAS already offers WebDAV, Android can also back up directly to it.
@@ -55,8 +55,11 @@ The v0.1.0 packages show the same information under **Link status**, **Pair your
 ### Other storage choices
 
 - **Phone** keeps the library and processing on Android when you choose on-device providers.
-- **NAS** lets you use a writable **WebDAV** folder directly or connect through **Secure Pocket Link** with a mounted NAS share. Enter your home Wi-Fi name and grant the Wi-Fi and background permissions requested on that screen.
+- **NAS with WebDAV.** On Android, choose **NAS → Connect with WebDAV** and enter the writable folder URL and credentials.
+- **NAS with Samba/SMB.** Connect to the share from the computer running Link. In Link settings, choose the mounted folder as the library location. In Android, choose **NAS → Connect through Secure Pocket Link** and enter the Link URL and token.
 - **Server-only imports** are enabled by switching off **Also keep a copy on this phone**. New imports go to the selected server as audio and require it to be reachable at import time. Keep the switch on if you want Android to transcribe and summarize new recordings automatically.
+
+For either NAS option, enter your home Wi-Fi name, grant the permissions shown for Wi-Fi and scheduled backups, then test the connection and save. [How to mount an SMB share for Link](link-server/README.md#use-a-sambasmb-share)
 
 ## 3. Add Docling for server processing
 

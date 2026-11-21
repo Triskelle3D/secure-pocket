@@ -30,6 +30,20 @@ The settings page shows Link uptime, whether the phone API listener is running, 
 
 Open Link settings and look for **Ready to receive Pocket recordings**. On Android, open **Settings → Library Location** and select **Secure Pocket Link**. Copy the **Secure Pocket Link URL** and **Link token** from **Connect the Android app** into the matching fields. Tap **Test connection**, then **Save settings**. Both devices need access to the same Wi-Fi or tailnet. Connect your Pocket recorder to Android over Bluetooth to send its recordings.
 
+## Use a Samba/SMB share
+
+Mount the NAS share on the computer running Link and sign in with an account that can write to it. Create a folder for the library, then enter its full path in **Backup destination**.
+
+| Computer | Connect to the share | Example library path |
+| --- | --- | --- |
+| Windows | Map a network drive in File Explorer. [Microsoft instructions](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/file-sharing-over-a-network-in-windows) | `Z:\Secure Pocket Library` |
+| macOS | In Finder, choose **Go → Connect to Server** and enter an address such as `smb://nas/Recordings`. [Apple instructions](https://support.apple.com/guide/mac-help/connect-mac-shared-computers-servers-mchlp1140/mac) | `/Volumes/Recordings/Secure Pocket Library` |
+| Linux | Mount the share with the system's SMB/CIFS client. | `/mnt/recordings/secure-pocket-library` |
+
+Keep the share mounted while Link runs. In Android, open **Settings → Library Location → NAS → Connect through Secure Pocket Link**. Enter Link's phone URL and token and your home Wi-Fi name. Tap **Test connection**, then **Save settings**.
+
+For Docker, mount the SMB share on the Docker host and use its path with the [host folder overlay](DOCLING.md). The Link container needs write access to the mounted folder.
+
 ## Portable executable builds
 
 Install the build dependency and run `python link-server/package.py` on the target operating system and CPU architecture:

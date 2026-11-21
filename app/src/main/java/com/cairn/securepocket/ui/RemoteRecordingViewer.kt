@@ -75,23 +75,42 @@ internal fun RemoteRecordingViewer(file: LinkFile, close: () -> Unit) {
 private fun fetchRemoteBundle(context: android.content.Context, file: LinkFile): RemoteBundleContent {
     val bundle = file.bundle ?: error("This server entry has no recording bundle.")
     require(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}-[a-f0-9]{8}[.]zip").matches(bundle)) { "Invalid server bundle name." }
-    val base = Graph.link.baseUrl()
-    val uri = URI("$base/library/$bundle")
-    com.cairn.securepocket.vault.checkedRemoteUri(uri.toString())
-    val connection = uri.toURL().openConnection() as HttpURLConnection
-    connection.instanceFollowRedirects = false
-    connection.connectTimeout = 8000
-    connection.readTimeout = 60000
-    Graph.link.authToken().takeIf { it.isNotBlank() }
-        ?.let { connection.setRequestProperty("X-Pocket-Token", it) }
+    var connection: HttpURLConnection? = null
+    var lastFailure: Exception? = null
+    for (base in Graph.link.baseUrls()) {
+        var candidate: HttpURLConnection? = null
+        try {
+            val uri = URI("$base/library/$bundle")
+            com.cairn.securepocket.vault.checkedRemoteUri(uri.toString())
+            val current = uri.toURL().openConnection() as HttpURLConnection
+            candidate = current
+            current.instanceFollowRedirects = false
+            current.connectTimeout = 8000
+            current.readTimeout = 60000
+            Graph.link.authToken().takeIf { it.isNotBlank() }
+                ?.let { current.setRequestProperty("X-Pocket-Token", it) }
+            val code = current.responseCode
+            if (code == 200) {
+                connection = current
+                break
+            }
+            if (code == 401 || code == 403) error("Server rejected the saved Link token.")
+            lastFailure = IllegalStateException("Server returned HTTP $code.")
+        } catch (e: Exception) {
+            if (e.message?.contains("rejected the saved Link token") == true) throw e
+            lastFailure = e
+        } finally {
+            if (connection !== candidate) candidate?.disconnect()
+        }
+    }
+    val activeConnection = connection ?: throw (lastFailure ?: IllegalStateException("Enter a Secure Pocket Link address."))
     val audioFile = File.createTempFile("remote-recording-", ".mp3", context.cacheDir)
     var transcript: String? = null
     var summary: String? = null
     var title: String? = null
     try {
-        check(connection.responseCode == 200) { "Server returned HTTP ${connection.responseCode}." }
         var total = 0L
-        ZipInputStream(connection.inputStream).use { zip ->
+        ZipInputStream(activeConnection.inputStream).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 require(!entry.isDirectory && '/' !in entry.name && '\\' !in entry.name && entry.name.length <= 110) { "Invalid server bundle entry." }
@@ -120,7 +139,7 @@ private fun fetchRemoteBundle(context: android.content.Context, file: LinkFile):
         audioFile.delete()
         throw e
     } finally {
-        connection.disconnect()
+        activeConnection.disconnect()
     }
 }
 

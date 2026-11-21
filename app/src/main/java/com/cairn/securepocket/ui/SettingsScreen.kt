@@ -76,8 +76,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         val stage = Choice(p, "docling_mode", "Docling stages", listOf("Off", "Pre", "Post", "Both"))
                         Text("Pre: transcribe audio. Post: format the summary. Both: use Docling for each.", style = MaterialTheme.typography.bodyMedium)
                         if (stage != "Off") {
-                            PrefField(p, "docling_url", "Secure Pocket Link URL with Docling enabled")
+                            PrefField(p, "docling_local_url", "Local Secure Pocket Link URL (preferred)")
+                            PrefField(p, "docling_url", "Tailscale Secure Pocket Link URL (fallback)")
                             PrefField(p, "docling_token", "Link token", true)
+                            Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
+                            Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
                         }
                         PrefSwitch(p, "allow_processing_servers", false, "Send audio or text to selected processing servers")
                     }
@@ -136,8 +139,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         var showMethodOptions by remember(destination) { mutableStateOf(false) }
                         if (destination == "Secure Pocket Link") {
                             Title("Secure Pocket Link connection")
-                            PrefField(p, "link_base", "Secure Pocket Link URL")
+                            PrefField(p, "link_local_url", "Local URL (preferred)")
+                            PrefField(p, "link_base", "Tailscale URL (fallback)")
                             PrefField(p, "link_token", "Link token", true)
+                            Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
+                            Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (destination == "NAS") {
                             Title("NAS connection")
@@ -160,8 +166,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 PrefField(p, "nas_token", "NAS password", true)
                             } else if (showMethodOptions && activeMethod == "Secure Pocket Link") {
                                 Text("Choose this when Secure Pocket Link runs on a PC connected to your NAS.", style = MaterialTheme.typography.bodyMedium)
-                                PrefField(p, "nas_url", "Secure Pocket Link URL")
+                                PrefField(p, "nas_local_url", "Local URL (preferred)")
+                                PrefField(p, "nas_url", "Tailscale URL (fallback)")
                                 PrefField(p, "nas_token", "Link token", true)
+                                Text("Local URL: enter the server computer’s LAN IP and HTTPS port, such as https://192.168.1.27:PORT. Tailscale URL: paste the HTTPS phone URL shown by Secure Pocket Link. The app tries local first, then Tailscale. Both URLs need trusted HTTPS certificates.", style = MaterialTheme.typography.bodySmall)
+                                Text("Swamp Hub Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. Swamp Hub has no LAN HTTPS listener configured yet, so leave Local URL blank until one is set up.", style = MaterialTheme.typography.bodySmall)
                             }
                             PrefField(p, "nas_ssid", "Only sync on this Wi-Fi network")
                             val permission = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -181,7 +190,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             val status by Graph.backup.status.collectAsState()
                             val scope = rememberCoroutineScope()
                             var connectionStatus by remember { mutableStateOf("") }
-                            val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
+                            val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_local_url", "link_token", "nas_url", "nas_local_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
                             val backupSettingsChanged = backupKeys.any { saved.all[it] != p.all[it] }
                             val savedDestination = saved.getString("library_destination", "Phone") ?: "Phone"
                             val savedHasPhoneCopy = saved.getBoolean("store_phone", true)
@@ -223,7 +232,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
             if (editor.commit()) {
                 saveStatus = "Settings saved."
-                val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
+                val backupKeys = setOf("library_destination", "store_phone", "link_base", "link_local_url", "link_token", "nas_url", "nas_local_url", "nas_user", "nas_token", "nas_method", "nas_ssid")
                 if (backupKeys.any { previous[it] != changes[it] }) {
                     Graph.backup.schedule()
                     Graph.backup.request()
@@ -242,9 +251,9 @@ private fun copySettings(source: SharedPreferences, target: SharedPreferences) {
 
 private fun isSettingsPreference(key: String): Boolean = key in setOf(
     "stt_provider", "stt_url", "stt_model", "stt_openai_token", "stt_token", "auto_transcribe",
-    "docling_mode", "docling_url", "docling_token", "allow_processing_servers", "llm_provider",
+    "docling_mode", "docling_local_url", "docling_url", "docling_token", "allow_processing_servers", "llm_provider",
     "llm_url", "llm_model", "auto_summary", "summary_points", "library_destination", "store_phone",
-    "link_base", "link_token", "nas_url", "nas_user", "nas_token", "nas_method", "nas_ssid", "app_theme",
+    "link_base", "link_local_url", "link_token", "nas_url", "nas_local_url", "nas_user", "nas_token", "nas_method", "nas_ssid", "app_theme",
 ) || key.startsWith("llm_token_")
 
 private fun putPreference(editor: SharedPreferences.Editor, key: String, value: Any?) {

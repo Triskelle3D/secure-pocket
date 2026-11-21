@@ -37,25 +37,37 @@ internal class ProcessingProviders(private val p: SharedPreferences, private val
         check(p.getBoolean("allow_processing_servers", false)) { "Allow processing servers in Settings first." }
     }
 
+    private fun doclingBases(): List<String> = listOf(get("docling_local_url"), get("docling_url"))
+        .filter(String::isNotBlank).distinct()
+
+    private fun postDocling(path: String, type: String, file: File?, text: String?): String {
+        var failure: Exception? = null
+        for (base in doclingBases()) {
+            try {
+                return post(endpoint(base, path), type, file, text, get("docling_token"), "X-Pocket-Token")
+            } catch (e: Exception) {
+                if (e.message?.contains("HTTP 401") == true || e.message?.contains("HTTP 403") == true) throw e
+                failure = e
+            }
+        }
+        throw failure ?: IllegalArgumentException("Enter a Secure Pocket Link address in Settings → Speech to text → Docling formatting.")
+    }
+
     fun docling(stage: String, file: File?, markdown: String? = null): String {
         permitRemote()
-        val base = get("docling_url")
-        require(base.isNotBlank()) {
+        require(doclingBases().isNotEmpty()) {
             "Enter the Secure Pocket Link URL in Settings → Speech to text → Docling formatting, or turn off Docling Post."
         }
-        val c = endpoint(base, "/docling/$stage")
-        return JSONObject(post(c, if (file != null) "audio/mpeg" else "text/markdown", file, markdown,
-            get("docling_token"), "X-Pocket-Token")).getString("markdown").trim()
+        return JSONObject(postDocling("/docling/$stage", if (file != null) "audio/mpeg" else "text/markdown", file, markdown))
+            .getString("markdown").trim()
     }
 
     fun doclingTranscript(file: File): DoclingTranscript {
         permitRemote()
-        val base = get("docling_url")
-        require(base.isNotBlank()) {
+        require(doclingBases().isNotEmpty()) {
             "Enter the Secure Pocket Link URL in Settings → Speech to text → Docling formatting."
         }
-        val c = endpoint(base, "/docling/pre")
-        val result = JSONObject(post(c, "audio/mpeg", file, null, get("docling_token"), "X-Pocket-Token"))
+        val result = JSONObject(postDocling("/docling/pre", "audio/mpeg", file, null))
         val rows = result.optJSONArray("segments") ?: JSONArray()
         val segments = List(rows.length()) { index ->
             val row = rows.getJSONObject(index)

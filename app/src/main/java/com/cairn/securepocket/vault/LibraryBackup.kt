@@ -64,9 +64,17 @@ class LibraryBackup(private val context: Context) {
         val destination = p.getString("library_destination", "Phone").orEmpty()
         val nas = destination == "NAS backup" || destination == "NAS"
         val method = if (nas) p.getString("nas_method", "WebDAV").orEmpty() else "Secure Pocket Link"
-        val base = p.getString(if (nas) "nas_url" else "link_base", "").orEmpty().trim().trimEnd('/')
+        val bases = serverBases(p, nas, method)
         val device = p.getString("ble_mac", "unknown-pocket").orEmpty().lowercase()
-        return "serverSaved:$device:$destination:$method:$base:${item.startAt.toLocalDate()}:${item.wireId}"
+        return "serverSaved:$device:$destination:$method:${bases.joinToString("|")}:${item.startAt.toLocalDate()}:${item.wireId}"
+    }
+
+    private fun serverBases(settings: android.content.SharedPreferences, nas: Boolean, method: String?): List<String> {
+        val localKey = if (nas) "nas_local_url" else "link_local_url"
+        val fallbackKey = if (nas) "nas_url" else "link_base"
+        val keys = if (method == "WebDAV") listOf(fallbackKey) else listOf(localKey, fallbackKey)
+        return keys.mapNotNull { settings.getString(it, "")?.trim()?.trimEnd('/') }
+            .filter(String::isNotEmpty).distinct()
     }
 
     /** Checks configured destination and credentials before starting a Pocket transfer. Null means ready. */
@@ -75,11 +83,12 @@ class LibraryBackup(private val context: Context) {
         if (destination == "Phone") return@withContext null
         val nas = destination == "NAS backup" || destination == "NAS"
         val method = if (nas) settings.getString("nas_method", "WebDAV") else "Secure Pocket Link"
-        val base = settings.getString(if (nas) "nas_url" else "link_base", "").orEmpty().trim().trimEnd('/')
-        if (base.isEmpty()) return@withContext "Enter the server URL in Settings → Library Location."
+        val bases = serverBases(settings, nas, method)
+        if (bases.isEmpty()) return@withContext "Enter the server URL in Settings → Library Location."
         val network = if (nas) homeNetwork(settings) else null
         if (nas && network == null) return@withContext "Connect to your configured home Wi-Fi before importing to the NAS."
-        try {
+        var lastProblem: String? = null
+        for (base in bases) try {
             val path = if (method == "WebDAV") "/" else "/health"
             val url = checkedRemoteUri(base + path)
             val connection = ((network?.openConnection(url.toURL()) ?: url.toURL().openConnection()) as HttpURLConnection)
@@ -106,7 +115,7 @@ class LibraryBackup(private val context: Context) {
                 val code = connection.responseCode
                 if (code in 200..299 && method == "Secure Pocket Link") {
                     val health = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                    when {
+                    lastProblem = when {
                         !health.optBoolean("ok") -> "Secure Pocket Link did not report a healthy server."
                         !health.optBoolean("authenticated") -> "Configure a Link token on the server and enter it in Settings → Library Location."
                         !health.optBoolean("writable") -> "The Secure Pocket Link server is not configured for library writes."
@@ -114,12 +123,14 @@ class LibraryBackup(private val context: Context) {
                         else -> null
                     }
                 }
-                else if (code in 200..299) null
-                else if (code == 401 || code == 403) "The server rejected the saved credentials. Check Settings → Library Location."
-                else "The selected server is unavailable (HTTP $code). Check its connection and URL."
+                else if (code in 200..299) return@withContext null
+                else if (code == 401 || code == 403) return@withContext "The server rejected the saved credentials. Check Settings → Library Location."
+                else lastProblem = "The selected server is unavailable (HTTP $code). Check its connection and URL."
             } finally { connection.disconnect() }
+            if (lastProblem == null) return@withContext null
+            if (lastProblem!!.contains("rejected the saved credentials")) return@withContext lastProblem
         } catch (e: Exception) {
-            when (e) {
+            lastProblem = when (e) {
                 is UnknownHostException -> "The server address could not be found. Check the URL and network, then retry."
                 is SocketTimeoutException -> "The selected server did not respond. Check the URL and network, then retry."
                 is ConnectException, is IOException -> "Can't reach the selected server. Check its URL and network, then retry."
@@ -127,6 +138,7 @@ class LibraryBackup(private val context: Context) {
                     else "Can't reach the selected server. Check its URL and network, then retry."
             }
         }
+        lastProblem
     }
 
     /** Upload a verified Pocket download to the configured remote location. */
@@ -137,13 +149,20 @@ class LibraryBackup(private val context: Context) {
             check(usesRemoteStorage()) { "Choose a server destination before uploading directly." }
             val nas = p.getString("library_destination", "Phone") in setOf("NAS backup", "NAS")
             val method = if (nas) p.getString("nas_method", "WebDAV") else "Secure Pocket Link"
-            val base = p.getString(if (nas) "nas_url" else "link_base", "").orEmpty().trim()
+            val bases = serverBases(p, nas, method)
             val token = p.getString(if (nas) "nas_token" else "link_token", "").orEmpty()
             val user = p.getString("nas_user", "").orEmpty()
             val webdav = method == "WebDAV"
-            Graph.link.preflightPocketUpload(base, token, webdav, user, token)
-            Graph.link.uploadPocketRecording(audio, item.date, item.startAt, item.wireId,
-                sha256, base, token, webdav, user, token)
+            var failure: Exception? = null
+            for (base in bases) try {
+                Graph.link.preflightPocketUpload(base, token, webdav, user, token)
+                return@withContext Graph.link.uploadPocketRecording(audio, item.date, item.startAt, item.wireId,
+                    sha256, base, token, webdav, user, token)
+            } catch (e: Exception) {
+                if (e.message?.contains("rejected the configured credentials") == true) throw e
+                failure = e
+            }
+            throw failure ?: IllegalStateException("Enter the server URL in Settings → Library Location.")
         }
 
     fun schedule() {
@@ -177,13 +196,13 @@ class LibraryBackup(private val context: Context) {
                 return@withLock
             }
             val mode = if (nas) p.getString("nas_method", "WebDAV") else "Secure Pocket Link"
-            val base = p.getString(if (nas) "nas_url" else "link_base", "").orEmpty().trim().trimEnd('/')
+            val bases = serverBases(p, nas, mode)
             val token = p.getString(if (nas) "nas_token" else "link_token", "").orEmpty()
             val user = p.getString("nas_user", "").orEmpty()
             var count = 0
             try {
                 status.value = "Checking library…"
-                require(base.isNotEmpty()) { "Enter the library server URL." }
+                require(bases.isNotEmpty()) { "Enter the library server URL." }
                 for (rec in Graph.runner.vault.list().filter { !it.partial }) {
                     val paths = listOf(rec.transcript, rec.summary, rec.titleFile)
                     val signature = rec.sha256 + paths.joinToString(":") { if (it.isFile) {
@@ -191,10 +210,20 @@ class LibraryBackup(private val context: Context) {
                             .digest(readEncryptedText(it).toByteArray(Charsets.UTF_8))
                             .joinToString("") { byte -> "%02x".format(byte) }
                     } else "-" }
-                    val key = "$destination:$mode:$base:${rec.localId}"
+                    val key = "$destination:$mode:${bases.joinToString("|")}:${rec.localId}"
                     if (!force && receipt.getString(key, null) == signature) continue
                     if (nas) check(homeNetwork() == network) { "Home Wi-Fi disconnected." }
-                    upload(rec, mode == "WebDAV", base, token, user, network)
+                    var failure: Exception? = null
+                    var uploaded = false
+                    for (base in bases) try {
+                        upload(rec, mode == "WebDAV", base, token, user, network)
+                        uploaded = true
+                        break
+                    } catch (e: Exception) {
+                        if (e.message?.contains("HTTP 401") == true || e.message?.contains("HTTP 403") == true) throw e
+                        failure = e
+                    }
+                    if (!uploaded) throw failure ?: IOException("No configured server address could be reached.")
                     receipt.edit().putString(key, signature).apply()
                     count++
                 }

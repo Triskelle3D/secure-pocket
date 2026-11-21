@@ -37,8 +37,10 @@ Earlier debug builds use a different signing key. Back up your library to Link a
    - **Windows, macOS, or Linux.** Install Python 3.10 or newer, extract the source ZIP, and install the runtime requirements in a virtual environment. [Source ZIP](http://swamp-hub:3000/Matt/secure-pocket/archive/master.zip), [Python downloads](https://www.python.org/downloads/), [Link install commands](link-server/README.md#run-from-source)
 2. Run the start command from the table below. Configure a trusted HTTPS proxy or direct TLS for phone access. Tailscale Serve is one option for a private network. [Link HTTPS setup](link-server/README.md#run-from-source)
 3. Open Link settings on the computer and unlock them with the code in `admin.token`. Check that the library folder is writable and the page says **Ready to receive Pocket recordings**. To use a NAS folder through Link, mount the share on the computer and choose that folder here. [Link settings](http://127.0.0.1:8733/admin/)
-4. On Android, open **Settings → Library Location → Secure Pocket Link**. Copy the HTTPS **Secure Pocket Link URL** and **Link token** from **Connect the Android app** in your browser.
+4. On Android, open **Settings → Library Location → Secure Pocket Link**. Put the server computer’s LAN IP address and LAN HTTPS port in **Local URL (preferred)**, for example `https://192.168.1.27:PORT`. Put the HTTPS phone URL from **Connect the Android app** in **Tailscale URL (fallback)**, then copy the **Link token**. Secure Pocket tries the local URL first and uses the Tailscale URL if local access fails. Both addresses must use HTTPS with certificates trusted by Android. Do not put a plain `http://` address here.
 5. Tap **Test connection**, then **Save settings**. Leave **Also keep a copy on this phone** on for Android processing, offline playback, and automatic backup. Use **Back up now · saved settings** to send recordings already on your phone.
+
+**Swamp Hub example.** The Tailscale URL is `https://swamp-hub.redacted-tailnet-name.ts.net:10443`. Swamp Hub currently exposes this service to the tailnet only. Its LAN HTTPS listener is not configured, so leave **Local URL (preferred)** blank until you set up a LAN HTTPS listener and a certificate Android trusts. The LAN field takes the server computer’s address, not the phone’s IP. For example, `https://192.168.1.27:PORT` means the server has LAN IP `192.168.1.27` and an HTTPS listener on the port you configured. Do not use port `18732` here; that API is loopback-only.
 
 | Computer | Start Link | Stop Link |
 | --- | --- | --- |
@@ -70,7 +72,7 @@ For either NAS option, enter your home Wi-Fi name and grant the permissions show
    ```
 
 3. Open [Link settings](http://127.0.0.1:8733/admin/) on the Docker host. Click **Check Docling**. The combined stack enables Docling and sets its internal service address on first launch.
-4. In Android **Settings → Transcription → Docling formatting**, choose a stage from the table below. Enter the HTTPS **Secure Pocket Link URL** and **Link token** from the Docker Link settings page. Enable **Send audio or text to selected processing servers**, then tap **Save settings**. [Docker HTTPS setup](link-server/DOCLING.md#host-folders-and-api-access)
+4. In Android **Settings → Transcription → Docling formatting**, choose a stage from the table below. Put the Link server’s LAN IP and HTTPS port in **Local URL (preferred)**. Put its HTTPS phone URL in **Tailscale URL (fallback)** and enter the **Link token** from the Docker Link settings page. Docling requests use the same local-first, Tailscale-fallback order. Both URLs need certificates Android trusts. Enable **Send audio or text to selected processing servers**, then tap **Save settings**. [Docker HTTPS setup](link-server/DOCLING.md#host-folders-and-api-access)
 5. Import a new recording and open its transcript in **Library**. To use **Post** or **Both**, select a working summary model in **Settings → Summaries** before importing.
 
 | Docling stage | Transcription | Summary |

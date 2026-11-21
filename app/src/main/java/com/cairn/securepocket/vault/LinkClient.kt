@@ -1,6 +1,7 @@
 package com.cairn.securepocket.vault
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.cairn.securepocket.capture.CaptureSink
 import java.io.File
 import java.net.HttpURLConnection
@@ -31,7 +32,16 @@ class LinkClient(context: Context) {
         prefs.getString("library_destination", "Phone") in setOf("NAS", "NAS backup") &&
             prefs.getString("nas_method", "WebDAV") == "Secure Pocket Link"
 
-    fun baseUrl(): String = prefs.getString(if (usesNasLink()) "nas_url" else "link_base", "")?.trim()?.trimEnd('/') ?: ""
+    fun baseUrls(settings: SharedPreferences = prefs): List<String> {
+        val nasLink = settings.getString("library_destination", "Phone") in setOf("NAS", "NAS backup") &&
+            settings.getString("nas_method", "WebDAV") == "Secure Pocket Link"
+        val localKey = if (nasLink) "nas_local_url" else "link_local_url"
+        val fallbackKey = if (nasLink) "nas_url" else "link_base"
+        return listOf(localKey, fallbackKey).mapNotNull { settings.getString(it, "")?.trim()?.trimEnd('/') }
+            .filter(String::isNotEmpty).distinct()
+    }
+
+    fun baseUrl(): String = baseUrls().firstOrNull().orEmpty()
     fun authToken(): String = prefs.getString(if (usesNasLink()) "nas_token" else "link_token", "")?.trim().orEmpty()
     fun enabled(): Boolean =
         (prefs.getString("library_destination", "Phone") == "Secure Pocket Link" || usesNasLink()) && baseUrl().isNotEmpty()
@@ -138,19 +148,28 @@ class LinkClient(context: Context) {
     }
 
     private fun get(path: String, timeoutMs: Int = 6000): Pair<Int, ByteArray> {
-        val conn = endpoint(baseUrl(), path)
-        authToken().takeIf { it.isNotEmpty() }?.let { conn.setRequestProperty("X-Pocket-Token", it) }
-        conn.instanceFollowRedirects = false
-        conn.connectTimeout = timeoutMs
-        conn.readTimeout = timeoutMs
-        conn.requestMethod = "GET"
-        return try {
-            val code = conn.responseCode
-            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.readBytes() ?: ByteArray(0)
-            code to body
-        } finally {
-            conn.disconnect()
+        var lastError: Exception? = null
+        for (base in baseUrls()) {
+            var conn: HttpURLConnection? = null
+            try {
+                val current = endpoint(base, path)
+                conn = current
+                authToken().takeIf { it.isNotEmpty() }?.let { current.setRequestProperty("X-Pocket-Token", it) }
+                current.instanceFollowRedirects = false
+                current.connectTimeout = timeoutMs
+                current.readTimeout = timeoutMs
+                current.requestMethod = "GET"
+                val code = current.responseCode
+                if (code == 401 || code == 403) return code to (current.errorStream?.readBytes() ?: ByteArray(0))
+                if (code in 200..299) return code to (current.inputStream.readBytes())
+                lastError = IllegalStateException("Server returned HTTP $code.")
+            } catch (e: Exception) {
+                lastError = e
+            } finally {
+                conn?.disconnect()
+            }
         }
+        throw lastError ?: IllegalStateException("Enter a Secure Pocket Link address.")
     }
 
     fun health(): String {

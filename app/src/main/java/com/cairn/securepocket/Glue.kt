@@ -14,6 +14,7 @@ import com.cairn.securepocket.transport.Simulator
 import com.cairn.securepocket.transport.Transport
 import com.cairn.securepocket.transport.TransportEvent
 import com.cairn.securepocket.vault.ImportSummary
+import com.cairn.securepocket.vault.SecurePreferences
 import com.cairn.securepocket.vault.VaultStore
 import java.io.File
 import java.time.LocalDateTime
@@ -37,7 +38,7 @@ class SessionRunner(
     private val cacheDir: File,
     private val scope: CoroutineScope,
 ) {
-    val vault = VaultStore(vaultRoot)
+    val vault = VaultStore(vaultRoot, cacheDir)
     private val vaultLock = Any()
 
     private val _health = MutableStateFlow<Map<String, Response>>(emptyMap())
@@ -66,6 +67,8 @@ class SessionRunner(
     private var deleting: DeviceFile? = null
     private var deleteAcknowledged = false
     private var deleteListSent = false
+    @Volatile private var libraryReady = false
+    private val pendingCaptures = mutableListOf<CaptureSink>()
 
     @Synchronized fun deleteImported(item: DeviceFile) {
         if (transport is Simulator || downloading.value || _connection.value != "READY" ||
@@ -141,7 +144,7 @@ class SessionRunner(
             if (done) {
                 val copy = deleteCopy
                 if (copy != null) {
-                    check(active.matches(copy)) { "Saved audio does not match the Pocket. Nothing was deleted." }
+                    check(active.matches(copy, vault)) { "Saved audio does not match the Pocket. Nothing was deleted." }
                     active.discard()
                     pull = null
                     deleteCopy = null
@@ -193,7 +196,18 @@ class SessionRunner(
     }
 
     init {
-        refresh()
+        scope.launch(Dispatchers.IO) {
+            try {
+                vault.migrateLegacyFiles()
+                libraryReady = true
+                refresh()
+                val queued = synchronized(pendingCaptures) { pendingCaptures.toList().also { pendingCaptures.clear() } }
+                queued.forEach(::onCapture)
+            } catch (e: Exception) {
+                vault.migrationError = e.localizedMessage ?: "Could not secure the existing library."
+                _lastCapture.value = "Library migration failed. Original files were preserved. ${vault.migrationError}"
+            }
+        }
         scope.launch {
             transport.events.collect { ev ->
                 when (ev) {
@@ -353,6 +367,10 @@ class SessionRunner(
     }
 
     private fun onCapture(sink: CaptureSink) {
+        if (!libraryReady) {
+            synchronized(pendingCaptures) { pendingCaptures.add(sink) }
+            return
+        }
         val startAt = session?.recordingStartedAt ?: LocalDateTime.now()
         if (!Graph.backup.storesOnPhone() && sink.state == CaptureSink.State.CLOSED && transport !is Simulator) {
             val item = DeviceFile(startAt.toLocalDate(), startAt, 0,
@@ -437,17 +455,17 @@ object Graph {
     }
 
     fun preferences(): android.content.SharedPreferences =
-        app.getSharedPreferences("settings", Application.MODE_PRIVATE)
+        SecurePreferences.open(app, "settings")
 
     private fun newTransport(app: Application): Transport =
-        when (app.getSharedPreferences("settings", Application.MODE_PRIVATE).getString("transport", "ble")) {
+        when (SecurePreferences.open(app, "settings").getString("transport", "ble")) {
             "ble" -> com.cairn.securepocket.transport.BleTransport(app)
             else -> Simulator(audioBytes = app.resources.openRawResource(R.raw.demo_tone).use { it.readBytes() })
         }
 
     /** Rebuild the stack around a different transport; vault survives, release the previous session before switching. */
     fun switchTransport(kind: String) {
-        app.getSharedPreferences("settings", Application.MODE_PRIVATE).edit().putString("transport", kind).apply()
+        SecurePreferences.open(app, "settings").edit().putString("transport", kind).apply()
         try {
             if (::transport.isInitialized) transport.close()
         } catch (_: Exception) {}
@@ -466,6 +484,7 @@ object Graph {
 class PocketApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.cairn.securepocket.vault.DeviceEncryption.clearPlaintextTemps(this)
         Graph.init(this)
     }
 }

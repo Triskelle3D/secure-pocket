@@ -13,7 +13,9 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   echo "Secure Pocket Link is already running (PID $(cat "$PIDFILE"))."
 else
   rm -f "$PIDFILE"
-  if [ -x "$BASE/dist/SecurePocketLink" ]; then
+  if [ -x "$BASE/.venv/bin/python" ] && [ -f "$BASE/link-server/secure_pocket_link.py" ]; then
+    nohup "$BASE/.venv/bin/python" -u "$BASE/link-server/secure_pocket_link.py" </dev/null >"$LOGFILE" 2>&1 &
+  elif [ -x "$BASE/dist/SecurePocketLink" ]; then
     nohup "$BASE/dist/SecurePocketLink" </dev/null >"$LOGFILE" 2>&1 &
   else
     nohup python3 -u "$BASE/link-server/secure_pocket_link.py" </dev/null >"$LOGFILE" 2>&1 &

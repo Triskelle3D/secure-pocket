@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cairn.securepocket.Graph
+import com.cairn.securepocket.vault.SecurePreferences
 import com.cairn.securepocket.transport.BleTransport
 import kotlinx.coroutines.delay
 import java.text.DateFormat
@@ -30,7 +31,7 @@ import java.util.Date
 internal fun FindPocket(connected: Boolean) {
     val transport = Graph.transport as? BleTransport ?: return
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+    val prefs = remember { SecurePreferences.open(context, "settings") }
     val mac = prefs.getString("ble_mac", null)
     val location = Graph.pocketLocation
     val last by location.lastSeen.collectAsState()

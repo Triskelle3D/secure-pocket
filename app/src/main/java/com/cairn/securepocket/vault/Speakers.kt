@@ -45,11 +45,11 @@ internal data class Speakers(val people: List<String>, val segments: List<Speech
     }
 }
 
-internal val VaultStore.Record.speakersFile get() = mp3.resolveSibling(mp3.nameWithoutExtension + ".speakers.json")
-internal val VaultStore.Record.manualTitleFile get() = mp3.resolveSibling(mp3.nameWithoutExtension + ".title-manual")
+internal val VaultStore.Record.speakersFile get() = mp3.resolveSibling(mp3.name.removeSuffix(".mp3.enc") + ".speakers.json.enc")
+internal val VaultStore.Record.manualTitleFile get() = mp3.resolveSibling(mp3.name.removeSuffix(".mp3.enc") + ".title-manual.enc")
 internal fun VaultStore.Record.readSpeakers(): Speakers? {
     if (!speakersFile.isFile) return null
-    val root = JSONObject(speakersFile.readText())
+    val root = JSONObject(readEncryptedText(speakersFile))
     val names = root.getJSONArray("people")
     val rows = root.getJSONArray("segments")
     return Speakers(List(names.length()) { names.getString(it) }, List(rows.length()) {

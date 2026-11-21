@@ -16,6 +16,16 @@
 <body>
 <header><small>Secure Pocket</small><h1>Link settings</h1></header>
 <main>
+  <section class="card" id="admin-unlock">
+    <h2>Unlock Link settings</h2>
+    <p class="hint">Open the <code>admin.token</code> file in Link’s configuration folder and paste its code here.</p>
+    <form id="unlock-form">
+      <label for="admin-code">Settings unlock code</label>
+      <div class="row"><input id="admin-code" type="password" autocomplete="off" required><button type="submit">Unlock</button></div>
+      <p class="sub" id="unlock-message" role="status"></p>
+    </form>
+  </section>
+  <div id="settings-content" hidden>
   <section class="card connection" aria-labelledby="connect-heading">
     <div id="status" class="status" role="status">
       <span class="status-title" id="status-title">Checking Link readiness…</span>
@@ -48,6 +58,7 @@
   <div class="grid settings-grid">
     <section class="card"><h2>Backup destination</h2><p class="hint">Recordings sent from your phone are saved in this folder. A mounted NAS folder works when it is mounted and writable before Link starts.</p>
       <label for="root">Folder path on this computer</label><input id="root" type="text" placeholder="/Volumes/Archive/Secure Pocket" autocomplete="off">
+      <label class="check"><input id="library-files" type="checkbox"><span><strong>Save as readable recording folders</strong><br><span class="sub">Use only on an encrypted disk or NAS. MP3 and Markdown files can be opened directly.</span></span></label>
       <p class="sub">Use an absolute path. Link creates the folder if needed. For a NAS, enter its mounted path (for example <span class="mono">/Volumes/Archive/Pocket</span> on macOS, <span class="mono">Z:\Pocket</span> on Windows, or <span class="mono">/mnt/nas/Pocket</span> on Linux).</p>
     </section>
     <section class="card"><h2>Change Link token</h2><p class="hint">Link creates a private token on first launch. Keep it private.</p>
@@ -75,18 +86,39 @@
     <p class="sub" id="logs-updated" aria-live="polite">Loading logs…</p><ol class="log-list" id="log-list" aria-label="Recent Link activity" aria-live="polite"></ol>
   </section>
   <p class="footer">The phone API listens on the port shown in Link diagnostics. Settings are served separately on this computer only.</p>
+  </div>
 </main>
 <script>
 const $=id=>document.getElementById(id); let doclingProbe=null;
-async function api(path, options={}) { const response=await fetch(path,{cache:'no-store',...options}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`Request failed (${response.status})`); return data; }
+let adminCode=sessionStorage.getItem('link-admin-code') || '';
+function lockSettings(message) {
+  adminCode='';
+  sessionStorage.removeItem('link-admin-code');
+  setPairToken('');
+  $('token').value='';
+  $('settings-content').hidden=true;
+  $('admin-unlock').hidden=false;
+  $('unlock-message').textContent=message;
+}
+async function api(path, options={}) {
+  const headers=new Headers(options.headers);
+  headers.set('X-Admin-Token',adminCode);
+  const response=await fetch(path,{cache:'no-store',...options,headers});
+  if(response.status===403) lockSettings('Enter the current code from admin.token.');
+  const data=await response.json();
+  if(!response.ok) throw new Error(data.error||`Request failed (${response.status})`);
+  return data;
+}
 function setStatus(title,detail='',error=false){$('status-title').textContent=title;$('status-detail').textContent=detail;$('status').classList.toggle('error',error)}
-function setPairAddress(url, port) {
+function setPairAddress(url, port, scheme='http') {
   $('pair-url').value=url || '';
-  $('pair-url').placeholder=url ? '' : `http://<host-LAN-IP>:${port}`;
+  $('pair-url').placeholder=url ? '' : `${scheme}://<host-LAN-IP>:${port}`;
   $('copy-url').disabled=!url;
   const help=$('pair-address-help');
   help.hidden=!!url;
-  help.textContent=`Use the computer’s LAN IP and port ${port}. In Docker, use the Docker host’s IP or set LINK_PUBLIC_HOST.`;
+  help.textContent=scheme==='https'
+    ? `Use the computer’s LAN IP and port ${port}, or set LINK_PUBLIC_URL to the full HTTPS address.`
+    : 'Configure direct API TLS or a trusted HTTPS proxy and LINK_PUBLIC_URL before connecting a phone.';
 }
 function setPairToken(token) {
   $('pair-token').value=token || '';
@@ -118,10 +150,15 @@ async function load() {
     const s=await api('/admin/api/settings');
     $('root').value=s.root;
     $('token').value=s.token;
+    $('library-files').checked=s.libraryFiles;
     $('docling-enabled').checked=!!s.docling.enabled;
     $('docling-url').value=s.docling.docling_url || '';
-    setPairAddress(s.pairingUrl,s.apiPort);
+    setPairAddress(s.pairingUrl,s.apiPort,s.pairingScheme);
     setPairToken(s.token);
+    $('settings-content').hidden=false;
+    $('admin-unlock').hidden=true;
+    sessionStorage.setItem('link-admin-code',adminCode);
+    $('admin-code').value='';
     await Promise.all([refresh(),refreshLogs()]);
   } catch(e) {
     setStatus('Could not load Link settings',e.message,true);
@@ -131,12 +168,13 @@ async function refresh() {
   try {
     const s=await api('/admin/api/status'), b=s.backup, a=s.apiListener;
     const problem=!a.running ? 'The phone API listener is stopped.'
+      : !a.pairingUrl ? 'Configure HTTPS for phone access. The API currently has no safe pairing URL.'
       : !s.authenticated ? 'Save a Link token before connecting Android.'
       : !b.ready ? 'Choose a writable backup folder below.' : '';
     if(problem) setStatus('Link needs attention',problem,true);
     else setStatus('Ready to receive Pocket recordings',
       'Waiting for Secure Pocket on Android. Connect your Pocket recorder to the phone over Bluetooth, then import recordings.');
-    setPairAddress(a.address ? `http://${a.address}` : '',a.port);
+    setPairAddress(a.pairingUrl,a.port,a.pairingScheme);
     $('uptime').textContent=`Running for ${duration(s.uptimeSeconds)}`;
     $('listener').textContent=a.running ? `Listening on ${a.address || `port ${a.port}`}` : `Stopped · port ${a.port}`;
     $('backup').textContent=b.ready ? `Ready · ${b.root} · writable` : b.exists ? `Not writable · ${b.root}` : `Folder unavailable · ${b.root}`;
@@ -156,7 +194,7 @@ $('save').addEventListener('click',async()=>{
   button.disabled=true;
   $('message').textContent='Saving…';
   try {
-    await api('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:$('root').value,token,docling:{enabled:$('docling-enabled').checked,docling_url:$('docling-url').value}})});
+    await api('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root:$('root').value,token,libraryFiles:$('library-files').checked,docling:{enabled:$('docling-enabled').checked,docling_url:$('docling-url').value}})});
     setPairToken(token);
     doclingProbe=null;
     $('message').textContent='Saved';
@@ -176,8 +214,13 @@ $('reveal').addEventListener('click',()=>{
 });
 $('copy').addEventListener('click',()=>copyPairField($('pair-token'),'Link token'));
 $('copy-url').addEventListener('click',()=>copyPairField($('pair-url'),'Link URL'));
-load();
-setInterval(()=>{if(!document.hidden){refresh();refreshLogs()}},15000);
+$('unlock-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  adminCode=$('admin-code').value.trim();
+  load();
+});
+if(adminCode) load();
+setInterval(()=>{if(adminCode&&!document.hidden){refresh();refreshLogs()}},15000);
 </script>
 </body>
 </html>

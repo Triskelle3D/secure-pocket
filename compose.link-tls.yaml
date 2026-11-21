@@ -1,0 +1,37 @@
+# Direct TLS for the phone API. Publish the host port to the LAN by setting
+# LINK_BIND_ADDRESS=0.0.0.0; use a certificate trusted by Android.
+services:
+  link:
+    ports: !override
+      - "${LINK_BIND_ADDRESS:-127.0.0.1}:${LINK_PUBLIC_API_PORT:-8732}:8732"
+      - "127.0.0.1:${LINK_PUBLIC_ADMIN_PORT:-8733}:8733"
+    command:
+      - python
+      - secure_pocket_link.py
+      - --api-host
+      - 0.0.0.0
+      - --tls-cert
+      - /run/secrets/link/tls.crt
+      - --tls-key
+      - /run/secrets/link/tls.key
+      - --port
+      - "8732"
+      - --admin-host
+      - 0.0.0.0
+      - --admin-port
+      - "8733"
+      - --config
+      - /config/config.json
+    volumes:
+      - type: bind
+        source: ${LINK_TLS_CERT_FILE:?Set LINK_TLS_CERT_FILE to the Link API certificate file}
+        target: /run/secrets/link/tls.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${LINK_TLS_KEY_FILE:?Set LINK_TLS_KEY_FILE to the Link API private key file}
+        target: /run/secrets/link/tls.key
+        read_only: true
+        bind:
+          create_host_path: false

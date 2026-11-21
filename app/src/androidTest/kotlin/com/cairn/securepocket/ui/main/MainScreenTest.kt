@@ -1,7 +1,6 @@
 package com.cairn.securepocket.ui.main
 
-import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import org.junit.Before
 import org.junit.Rule
@@ -10,7 +9,7 @@ import org.junit.Test
 /** UI tests for [com.cairn.securepocket.ui.main.MainScreen]. */
 class MainScreenTest {
 
-  @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
+  @get:Rule val composeTestRule = createComposeRule()
 
   @Before
   fun setup() {
@@ -19,7 +18,7 @@ class MainScreenTest {
 
   @Test
   fun firstItem_exists() {
-    FAKE_DATA.forEach { composeTestRule.onNodeWithText("Hello $it!").assertExists() }
+    FAKE_DATA.forEach { composeTestRule.onNodeWithText("Hello $it !").assertExists() }
   }
 }
 

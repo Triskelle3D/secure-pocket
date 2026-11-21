@@ -20,35 +20,36 @@ import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.SpeakerModel
 
-val VaultStore.Record.titleFile get() = mp3.resolveSibling(mp3.nameWithoutExtension + ".title")
+val VaultStore.Record.titleFile get() = mp3.resolveSibling(mp3.name.removeSuffix(".mp3.enc") + ".title.enc")
 val VaultStore.Record.title: String
     get() = runCatching {
-        val manual = if (manualTitleFile.isFile) manualTitleFile.readText().trim() else ""
+        val manual = if (manualTitleFile.isFile) readEncryptedText(manualTitleFile).trim() else ""
         if (manual.isNotEmpty() && manual != "manual") manual
-        else if (manual == "manual") titleFile.readText().trim()
-        else cleanRecordingTitle(titleFile.readText())
+        else if (manual == "manual") readEncryptedText(titleFile).trim()
+        else cleanRecordingTitle(readEncryptedText(titleFile))
     }.getOrNull()?.takeIf { it.isNotEmpty() } ?: "Recording " + startAt.toLocalTime().toString().take(5)
 
-val VaultStore.Record.transcript get() = mp3.resolveSibling(mp3.nameWithoutExtension + ".transcript.md")
-val VaultStore.Record.summary get() = mp3.resolveSibling(mp3.nameWithoutExtension + ".summary.md")
+val VaultStore.Record.transcript get() = mp3.resolveSibling(mp3.name.removeSuffix(".mp3.enc") + ".transcript.md.enc")
+val VaultStore.Record.summary get() = mp3.resolveSibling(mp3.name.removeSuffix(".mp3.enc") + ".summary.md.enc")
 
 fun File.saveMarkdown(text: String) {
-    val temp = File.createTempFile("note-", ".tmp", parentFile)
-    try {
-        temp.writeText(text)
-        Files.move(temp.toPath(), toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-    } finally { temp.delete() }
+    writeEncryptedText(this, text)
 }
 
 /** One speech decoder at a time. Jobs survive navigation and release native resources on completion. */
 class RecordingNotes(private val context: Context) {
-    private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.open(context, "settings")
     private val providers = ProcessingProviders(prefs, OnDeviceModel(context))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val decoder = Mutex()
     val status = MutableStateFlow<Map<String,String>>(emptyMap())
     private val active = mutableSetOf<String>()
     val changed = MutableStateFlow(0L)
+
+    private inline fun <T> withAudio(record: VaultStore.Record, block: (File) -> T): T {
+        val audio = com.cairn.securepocket.Graph.runner.vault.materialize(record.mp3)
+        return try { block(audio) } finally { audio.delete() }
+    }
 
     fun imported(record: VaultStore.Record) {
         if (!record.partial && prefs.getBoolean("auto_transcribe", true)) process(record,
@@ -102,7 +103,7 @@ class RecordingNotes(private val context: Context) {
         decoder.withLock {
             val old = record.readSpeakers()
             if (providers.useDoclingPre && old?.source != "docling") {
-                val result = providers.doclingTranscript(record.mp3)
+                val result = withAudio(record, providers::doclingTranscript)
                 check(result.segments.isNotEmpty()) { "Docling returned no timed speech segments." }
                 val updated = Speakers(old?.people.orEmpty(), result.segments, source = "docling")
                 synchronized(this@RecordingNotes) {
@@ -115,7 +116,7 @@ class RecordingNotes(private val context: Context) {
                 updated
             }
             else if (old != null && old.segments.isNotEmpty()) old
-            else Speakers(old?.people.orEmpty(), transcribe(record.mp3, speakers = true)).also {
+            else Speakers(old?.people.orEmpty(), withAudio(record) { transcribe(it, speakers = true) }).also {
                 check(it.segments.isNotEmpty()) { "No speech segments detected." }
                 synchronized(this@RecordingNotes) {
                     if (record.mp3.isFile) record.saveSpeakers(it.copy(people = record.readSpeakers()?.people ?: it.people))
@@ -149,12 +150,17 @@ class RecordingNotes(private val context: Context) {
                 decoder.withLock {
                     if (!record.transcript.exists()) {
                         report("Transcribing…")
-                        val doclingResult = if (providers.useDoclingPre) providers.doclingTranscript(record.mp3) else null
-                        val text = when {
-                            doclingResult != null -> doclingResult.markdown
-                            providers.speechProvider == "On-device Vosk" -> transcribe(record.mp3).joinToString("\n\n") { it.text }
-                            else -> providers.speech(record.mp3)
+                        val result = withAudio(record) { audio ->
+                            val doclingResult = if (providers.useDoclingPre) providers.doclingTranscript(audio) else null
+                            val text = when {
+                                doclingResult != null -> doclingResult.markdown
+                                providers.speechProvider == "On-device Vosk" -> transcribe(audio).joinToString("\n\n") { it.text }
+                                else -> providers.speech(audio)
+                            }
+                            text to doclingResult
                         }
+                        val text = result.first
+                        val doclingResult = result.second
                         check(text.isNotBlank()) { "No speech detected." }
                         record.transcript.saveMarkdown(text)
                         if (doclingResult != null && doclingResult.segments.isNotEmpty()) {
@@ -165,9 +171,9 @@ class RecordingNotes(private val context: Context) {
                         com.cairn.securepocket.Graph.backup.request()
                     }
                     if (makeSummary && (!record.summary.exists() || replace ||
-                            record.summary.useLines { it.firstOrNull() } == "# Highlights")) {
+                            readEncryptedText(record.summary).lineSequence().firstOrNull() == "# Highlights")) {
                         report("Generating summary…")
-                        val transcript = record.transcript.readText()
+                        val transcript = readEncryptedText(record.transcript)
                         val result = providers.summarize(transcript, runCatching { record.readSpeakers()?.people }.getOrNull().orEmpty())
                         val markdown = if (providers.useDoclingPost) {
                             report("Formatting with Docling…")

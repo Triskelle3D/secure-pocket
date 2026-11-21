@@ -25,7 +25,7 @@ data class LinkFile(val name: String, val bytes: Long, val mtime: Long, val sha1
  */
 class LinkClient(context: Context) {
 
-    private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.open(context, "settings")
 
     private fun usesNasLink(): Boolean =
         prefs.getString("library_destination", "Phone") in setOf("NAS", "NAS backup") &&
@@ -133,9 +133,7 @@ class LinkClient(context: Context) {
 
     private fun checkedBase(raw: String): String {
         val base = raw.trim().trimEnd('/')
-        val uri = URI(base)
-        require(uri.scheme in listOf("http", "https") && uri.host != null && uri.userInfo == null &&
-            uri.query == null && uri.fragment == null) { "Enter a valid storage server URL." }
+        checkedRemoteUri(base)
         return base
     }
 

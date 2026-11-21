@@ -15,19 +15,27 @@ class RecordingFlowTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
 
     @Test fun summaryPreferenceSurvivesNavigation() {
-        val prefs = ui.activity.getSharedPreferences("settings", 0)
+        val prefs = SecurePreferences.open(ui.activity, "settings")
+        val draft = SecurePreferences.open(ui.activity, "settings_draft")
         val original = prefs.getInt("summary_points", 3)
         val changed = if (original == 5) 8 else 5
         try {
             ui.onNodeWithContentDescription("SETTINGS").performClick()
             ui.onNodeWithText("Summaries").performClick()
-            ui.onNodeWithText(changed.toString()).performClick()
+            ui.onNodeWithText(changed.toString()).performScrollTo().performClick()
+            ui.waitUntil(5000) { draft.getInt("summary_points", 3) == changed }
+            ui.onNodeWithText("Save settings").performScrollTo().performClick()
+            ui.onNodeWithText("Settings saved.").assertExists()
+            ui.waitUntil(5000) { prefs.getInt("summary_points", 3) == changed }
             assertEquals(changed, prefs.getInt("summary_points", 3))
             ui.onNodeWithContentDescription("LIBRARY").performClick()
             ui.onNodeWithContentDescription("SETTINGS").performClick()
             ui.onNodeWithText("Summaries").performClick()
             ui.onNodeWithText(changed.toString()).assertIsSelected()
-        } finally { prefs.edit().putInt("summary_points", original).commit() }
+        } finally {
+            prefs.edit().putInt("summary_points", original).commit()
+            draft.edit().clear().commit()
+        }
     }
 
     @Test fun speechPlaybackMarkdownRoundTrip() {
@@ -53,20 +61,29 @@ class RecordingFlowTest {
             ui.waitUntil(90000) { r.transcript.isFile || (Graph.notes.status.value[r.localId]?.let {
                 it !in listOf("Queued", "Transcribing…", "Generating summary…", "Formatting with Docling…", "Saved") } == true) }
             assertTrue("Speech result: " + Graph.notes.status.value[r.localId], r.transcript.isFile)
-            assertTrue(r.transcript.readText().contains("pocket", ignoreCase = true))
+            assertTrue(readEncryptedText(r.transcript).contains("pocket", ignoreCase = true))
             ui.onNodeWithText("Close").performClick()
+            r.summary.saveMarkdown("# Original summary\n")
+            Graph.notes.changed.value++
             ui.onNodeWithText("SUMMARIES").performClick()
             ui.onNode(row).performClick()
-            ui.onNodeWithText("Edit").performClick()
+            ui.waitUntil(15000) {
+                ui.onAllNodes(hasText("Edit summary") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            }
+            ui.onNodeWithText("Edit summary").performClick()
+            ui.waitUntil(10000) {
+                ui.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
+            }
             val revised = "# Field notes\n\n- Meet on **Friday**."
-            ui.onNode(hasSetTextAction() and hasText("Markdown source")).performTextReplacement(revised)
+            ui.onNode(hasSetTextAction()).performTextReplacement(revised)
             ui.onNodeWithText("Save").performClick()
             ui.onNodeWithText("Close").performClick()
             ui.onNode(row).performClick()
-            ui.onNodeWithText("Edit").performClick()
-            ui.onNode(hasSetTextAction() and hasText("Markdown source")).assertTextContains(revised)
-            assertEquals(revised, r.summary.readText())
-            assertEquals(r.sha256, VaultStore.sha256(r.mp3))
+            ui.onNodeWithText("Edit summary").performClick()
+            ui.onNode(hasSetTextAction()).assertTextContains(revised)
+            assertEquals(revised, readEncryptedText(r.summary))
+            val audioForHash = Graph.runner.vault.materialize(r.mp3)
+            try { assertEquals(r.sha256, VaultStore.sha256(audioForHash)) } finally { audioForHash.delete() }
         } finally {
             listOf(sink.file, r.mp3, r.sidecar, r.transcript, r.summary).forEach { it.delete() }
             Graph.runner.refresh()

@@ -77,9 +77,7 @@ private fun fetchRemoteBundle(context: android.content.Context, file: LinkFile):
     require(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}-[a-f0-9]{8}[.]zip").matches(bundle)) { "Invalid server bundle name." }
     val base = Graph.link.baseUrl()
     val uri = URI("$base/library/$bundle")
-    require(uri.scheme in listOf("http", "https") && uri.host != null && uri.userInfo == null && uri.query == null && uri.fragment == null) {
-        "Invalid server URL."
-    }
+    com.cairn.securepocket.vault.checkedRemoteUri(uri.toString())
     val connection = uri.toURL().openConnection() as HttpURLConnection
     connection.instanceFollowRedirects = false
     connection.connectTimeout = 8000

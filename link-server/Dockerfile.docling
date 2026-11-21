@@ -1,5 +1,6 @@
 # Start with the official multi-architecture CPU Docling Serve release.
-FROM ghcr.io/docling-project/docling-serve-cpu:v1.38.2
+# Pin the upstream multi-architecture image index for reproducible builds.
+FROM ghcr.io/docling-project/docling-serve-cpu:v1.38.2@sha256:7a480a1604fa3b42efeddc7db9527690d9f9bc903226136013e2bfe6b1a4dfb0
 
 # Docling Serve's stock CPU image omits the ASR runtime. Install the upstream
 # Whisper backend directly, plus a bundled ffmpeg decoder. This avoids pulling
@@ -12,6 +13,10 @@ RUN mkdir -p /models \
        "openai-whisper==20250625" "imageio-ffmpeg==0.6.0" \
     && /opt/app-root/bin/python -m pip install --no-cache-dir \
        "numba==0.68.1" "tiktoken==0.14.0" "more-itertools==11.2.1" \
+    && /opt/app-root/bin/python -m pip install --no-cache-dir \
+       "pip==26.2" "dnspython==2.9.2" "oauthlib==4.0.1" "pyasn1==0.6.5" "soupsieve==4.0.0" \
+       "opentelemetry-api==1.45.2" "opentelemetry-sdk==1.45.2" "opentelemetry-exporter-otlp==1.45.2" \
+       "opentelemetry-exporter-prometheus==0.66b2" "opentelemetry-instrumentation-fastapi==0.66b2" \
     && ffmpeg_path=$(/opt/app-root/bin/python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())') \
     && ln -s "$ffmpeg_path" /usr/local/bin/ffmpeg \
     && /opt/app-root/bin/python -c 'import whisper; print("Whisper audio backend ready")'

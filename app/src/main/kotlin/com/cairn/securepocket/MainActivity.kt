@@ -11,6 +11,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (BuildConfig.BUILD_TYPE == "release") window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
             SecurePocketTheme {
                 AppRoot()

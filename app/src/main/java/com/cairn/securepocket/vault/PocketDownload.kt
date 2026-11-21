@@ -32,19 +32,21 @@ class PocketDownload(val item: DeviceFile, cache: File) {
         check(sink.state == CaptureSink.State.APPENDING) { "Could not write audio." }
     }
 
-    fun matches(copy: VaultStore.Record): Boolean {
+    fun matches(copy: VaultStore.Record, vault: VaultStore): Boolean {
         if (expected <= 0 || received != expected || copy.partial ||
             copy.verification == VaultStore.Verification.MISMATCHED || copy.bytes != expected ||
-            !copy.mp3.isFile || copy.mp3.length() != expected) return false
+            !copy.mp3.isFile || copy.bytes != expected) return false
         sink.finish()
-        return sink.sha256Hex() == copy.sha256 && VaultStore.sha256(copy.mp3) == copy.sha256
+        val audio = vault.materialize(copy.mp3)
+        return try { sink.sha256Hex() == copy.sha256 && VaultStore.sha256(audio) == copy.sha256 }
+        finally { audio.delete() }
     }
 
     fun commit(vault: VaultStore): VaultStore.Record {
         check(expected > 0 && received == expected)
         sink.finish()
         val sha = sink.sha256Hex()
-        val existing = vault.list().firstOrNull { it.startAt == item.startAt && it.sha256 == sha && !it.partial && it.mp3.length() == expected }
+        val existing = vault.list().firstOrNull { it.startAt == item.startAt && it.sha256 == sha && !it.partial && it.bytes == expected }
         val r = existing?.copy(deviceExpectedBytes = expected, lengthSeconds = item.lengthSeconds)
             ?: vault.importCapture(sink, item.date, item.startAt, expected, item.lengthSeconds)
         check(vault.verify(r) == VaultStore.Verification.MATCHED)

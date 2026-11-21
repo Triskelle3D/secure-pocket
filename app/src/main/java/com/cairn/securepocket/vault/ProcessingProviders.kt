@@ -9,9 +9,7 @@ import java.net.URI
 import java.util.UUID
 
 internal fun endpoint(base: String, path: String): HttpURLConnection {
-    val url = URI(base.trim().trimEnd('/') + path)
-    require(url.scheme in listOf("http", "https") && url.host != null && url.userInfo == null &&
-        url.query == null && url.fragment == null) { "Enter a valid HTTP or HTTPS server URL." }
+    val url = checkedRemoteUri(base.trim().trimEnd('/') + path)
     return (url.toURL().openConnection() as HttpURLConnection).apply {
         instanceFollowRedirects = false
         connectTimeout = 8000

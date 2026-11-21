@@ -93,7 +93,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SecurePocketTheme(content: @Composable () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE) }
+    val prefs = remember { com.cairn.securepocket.vault.SecurePreferences.open(context, "settings") }
     var dark by remember { mutableStateOf(prefs.getString("app_theme", "dark") != "light") }
     androidx.compose.runtime.DisposableEffect(prefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->

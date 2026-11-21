@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.cairn.securepocket.BuildConfig
 import com.cairn.securepocket.Graph
+import com.cairn.securepocket.vault.SecurePreferences
 import com.cairn.securepocket.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,9 +31,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val saved = remember(context) { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+    val saved = remember(context) { SecurePreferences.open(context, "settings") }
     val p = remember(context) {
-        context.getSharedPreferences("settings_draft", Context.MODE_PRIVATE).also { copySettings(saved, it) }
+        SecurePreferences.open(context, "settings_draft").also { copySettings(saved, it) }
     }
     var saveStatus by remember { mutableStateOf("") }
     var tab by rememberSaveable { mutableIntStateOf(0) }

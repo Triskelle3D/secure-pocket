@@ -3,13 +3,25 @@ package com.cairn.securepocket
 import com.cairn.securepocket.protocol.*
 import com.cairn.securepocket.vault.*
 import java.io.File
+import javax.crypto.KeyGenerator
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class PocketDownloadTest {
     @JvmField @Rule val tmp = TemporaryFolder()
+
+    @Before fun setUpKey() {
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        DeviceEncryption.testKeyProvider = { key }
+    }
+
+    @After fun clearKey() {
+        DeviceEncryption.testKeyProvider = null
+    }
 
     private fun callRecording(): DeviceFile {
         val parser = ReplyParser()
@@ -32,11 +44,12 @@ class PocketDownloadTest {
             return download.commit(vault)
         }
         val first = pull()
-        first.summary.writeText("# User edit")
+        first.summary.saveMarkdown("# User edit")
         assertEquals(first.mp3, pull().mp3)
         val saved = vault.list().single()
-        assertArrayEquals(bytes, saved.mp3.readBytes())
-        assertEquals("# User edit", saved.summary.readText())
+        val materialized = vault.materialize(saved.mp3)
+        try { assertArrayEquals(bytes, materialized.readBytes()) } finally { materialized.delete() }
+        assertEquals("# User edit", vault.readText(saved.summary))
         assertEquals(VaultStore.Verification.MATCHED, saved.verification)
     }
 

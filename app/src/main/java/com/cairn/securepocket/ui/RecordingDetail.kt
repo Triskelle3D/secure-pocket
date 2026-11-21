@@ -37,9 +37,9 @@ fun RecordingDetail(rec: VaultStore.Record, showSummary: Boolean, dismiss: () ->
     LaunchedEffect(file, status, notesVersion) {
         try {
             val (text, copy) = withContext(Dispatchers.IO) {
-                val markdown = if (file.isFile) file.readText() else null
+                val markdown = if (file.isFile) readEncryptedText(file) else null
                 markdown to (showSummary && markdown != null && rec.transcript.isFile &&
-                    transcriptCopy(markdown, rec.transcript.readText()))
+                    transcriptCopy(markdown, readEncryptedText(rec.transcript)))
             }
             saved = text
             duplicateSummary = copy
@@ -64,7 +64,7 @@ fun RecordingDetail(rec: VaultStore.Record, showSummary: Boolean, dismiss: () ->
                             Graph.notes.changed.value++
                             Graph.backup.request()
                             saved = draft
-                            duplicateSummary = showSummary && rec.transcript.isFile && transcriptCopy(draft, rec.transcript.readText())
+                            duplicateSummary = showSummary && rec.transcript.isFile && transcriptCopy(draft, readEncryptedText(rec.transcript))
                             editing = false
                             error = ""
                         } catch (e: Exception) { error = "Save failed. Your draft is still open." }

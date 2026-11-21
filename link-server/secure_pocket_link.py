@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Secure Pocket Link — desktop library server and localhost settings UI.
 
-Serves a folder of recordings (mp3 + sidecar json/md) over LAN or tailnet.
-The phone points Settings > Library Location > Secure Pocket Link at http://<this machine>:8732
-and browses/imports the library with zero cloud dependency.
-
-Stdlib only. The phone API binds 0.0.0.0 (LAN + tailscale reachable) and always
-requires the shared token shown in the localhost settings page.
+Serves recording bundles to authenticated Android clients. The phone API
+binds loopback by default. Use direct TLS or a trusted local HTTPS proxy
+to connect a phone. The settings listener uses a separate admin code.
 """
 import argparse
 from collections import deque
@@ -22,28 +19,45 @@ import time
 import hmac
 import re
 import shutil
+import ssl
+import unicodedata
 import tempfile
 import threading
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
-from urllib.request import Request, urlopen
+from urllib.request import Request
 from urllib.error import HTTPError, URLError
+from link_crypto import (MAGIC as ENCRYPTED_MAGIC, decrypt_to_temporary,
+                         encrypt_file_atomic, encrypt_stream,
+                         is_encrypted, load_or_create_key, seal_json, unseal_json)
 
 ROOT = os.path.expanduser("~/secure-pocket-link/inbox")
 TOKEN = None
+ADMIN_CODE = ""
+READABLE_LIBRARY = False
 CONFIG = {}
 CONFIG_PATH = None
 ADMIN_PORT = 8733
 PUBLIC_API_PORT = 8732
 PUBLIC_ADMIN_PORT = 8733
 PUBLIC_HOST_REQUIRED = False
+PUBLIC_URL = ""
+API_TLS = False
+API_BIND = "127.0.0.1"
+ENCRYPTION_KEY = None
 DOCLING_CONFIG = {}
 DOCLING_SLOT = threading.BoundedSemaphore(1)
 CONFIG_LOCK = threading.RLock()
 LIBRARY_WRITE_LOCK = threading.RLock()
+UPLOAD_SLOT = threading.BoundedSemaphore(1)
+ARTIFACT_READ_SLOTS = threading.BoundedSemaphore(2)
+MAX_UPLOAD_BYTES = 128 * 1024**2
+MAX_DOC_INPUT_BYTES = 128 * 1024**2
 BUNDLE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}-[a-f0-9]{8}\.zip")
+RECORDING_ID = re.compile(BUNDLE.pattern.removesuffix(r"\.zip"))
 STARTED_AT = time.time()
 DIAGNOSTIC_LOG = deque(maxlen=200)
 DIAGNOSTIC_LOCK = threading.Lock()
@@ -59,13 +73,17 @@ def _library_count():
     count = 0
     try:
         with os.scandir(ROOT) as entries:
-            count += sum(1 for entry in entries if entry.is_file() and entry.name.lower().endswith(".mp3"))
+            count += sum(1 for entry in entries if entry.is_file() and entry.name.lower().endswith(".mp3")
+                         and not _replaced_loose_alias(entry.name))
     except OSError:
         return 0
     library = Path(ROOT) / "library"
     try:
         with os.scandir(library) as entries:
-            count += sum(1 for entry in entries if entry.is_file() and BUNDLE.fullmatch(entry.name))
+            count += sum(1 for entry in entries
+                         if (entry.is_dir(follow_symlinks=False) and RECORDING_ID.fullmatch(entry.name))
+                         or (entry.is_file(follow_symlinks=False) and BUNDLE.fullmatch(entry.name)
+                             and not (library / Path(entry.name).stem).is_dir()))
     except OSError:
         pass
     return count
@@ -107,8 +125,9 @@ def _docling_probe(config):
     if not base.startswith(("http://", "https://")):
         return {"state": "unreachable", "checkedAt": _timestamp(), "detail": "Invalid service address"}
     try:
+        from docling_client import open_docling_request
         request = Request(base + "/health", headers={"Accept": "application/json"}, method="GET")
-        with urlopen(request, timeout=2.5) as response:
+        with open_docling_request(request, timeout=2.5) as response:
             return {"state": "reachable" if 200 <= response.status < 300 else "unreachable",
                     "httpStatus": response.status, "checkedAt": _timestamp()}
     except HTTPError as exc:
@@ -124,20 +143,207 @@ def stream_sha(stream):
         digest.update(chunk)
     return digest.hexdigest()
 
+
+def _replaced_loose_alias(name):
+    return (name.startswith(".link-") and (Path(ROOT) / "library" / name[6:-4]).is_dir())
+
+
+def _recording_member(name):
+    # The Android writer already normalizes names to letters, numbers and basic punctuation.
+    return (0 < len(name) <= 110 and not name.startswith(".")
+            and all(ch.isalnum() or ch in "_. -" for ch in name)
+            and (name.endswith((".mp3", ".transcript.md", ".summary.md")) or name == "title.txt"))
+
+
+def _recording_files(folder):
+    if folder.is_symlink():
+        raise OSError("Invalid recording folder")
+    parts = sorted(path for path in folder.iterdir() if _recording_member(path.name))
+    if (not 1 <= len(parts) <= 4 or any(path.is_symlink() or not path.is_file() for path in parts)
+            or sum(path.suffix == ".mp3" for path in parts) != 1):
+        raise OSError("Invalid recording folder")
+    sizes = [part.stat().st_size for part in parts]
+    if sum(sizes) > MAX_UPLOAD_BYTES:
+        raise OSError("Recording is too large")
+    return parts
+
+
+@contextmanager
+def _open_bundle(path):
+    folder = path.with_suffix("")
+    with LIBRARY_WRITE_LOCK:
+        stream = tempfile.TemporaryFile() if folder.is_dir() else None
+        if stream is not None:
+            try:
+                with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as archive:
+                    for part in _recording_files(folder):
+                        archive.write(part, part.name)
+                stream.seek(0)
+            except BaseException:
+                stream.close()
+                raise
+    if stream is not None:
+        with stream:
+            yield stream
+        return
+    with _open_artifact(path) as stream:
+        yield stream
+
+
+def _store_bundle(source, destination):
+    folder = destination.with_suffix("")
+    if not READABLE_LIBRARY and not folder.is_dir():
+        return _replace_with_encrypted(source, destination)
+    if folder.is_symlink():
+        raise OSError("Invalid recording folder")
+    backup = folder.with_name("." + folder.name + ".previous")
+    if backup.exists():
+        if folder.exists():
+            shutil.rmtree(backup)
+        else:
+            os.rename(backup, folder)
+    stage = Path(tempfile.mkdtemp(prefix=".recording-", dir=destination.parent))
+    try:
+        with zipfile.ZipFile(source) as archive:
+            for entry in archive.infolist():
+                if not _recording_member(entry.filename):
+                    raise ValueError("Invalid recording file name")
+                part = stage / entry.filename
+                with archive.open(entry) as incoming, part.open("xb") as stored:
+                    shutil.copyfileobj(incoming, stored)
+                    stored.flush()
+                    os.fsync(stored.fileno())
+        _recording_files(stage)
+        if folder.exists():
+            os.rename(folder, backup)
+        try:
+            os.rename(stage, folder)
+        except OSError:
+            if backup.exists():
+                os.rename(backup, folder)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+        destination.unlink(missing_ok=True)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+
+
+@contextmanager
+def _open_artifact(path):
+    """Yield verified plaintext for legacy or encrypted library artifacts."""
+    path = Path(path)
+    if not is_encrypted(path):
+        with path.open("rb") as stream:
+            yield stream
+        return
+    if ENCRYPTION_KEY is None:
+        raise OSError("Link encryption key is unavailable")
+    try:
+        ARTIFACT_READ_SLOTS.acquire()
+        with path.open("rb") as source:
+            stream = decrypt_to_temporary(source, ENCRYPTION_KEY, path.name)
+    except Exception:
+        try:
+            ARTIFACT_READ_SLOTS.release()
+        except ValueError:
+            pass
+        raise OSError("Encrypted artifact failed authentication") from None
+    try:
+        yield stream
+    finally:
+        stream.close()
+        ARTIFACT_READ_SLOTS.release()
+
+
+def _encrypted_temp(source_path, destination):
+    destination = Path(destination)
+    directory = destination.parent
+    fd, name = tempfile.mkstemp(prefix="encrypted-", suffix=".tmp", dir=directory)
+    try:
+        with Path(source_path).open("rb") as source, os.fdopen(fd, "wb") as target:
+            encrypt_stream(source, target, ENCRYPTION_KEY, destination.name)
+            target.flush()
+            os.fsync(target.fileno())
+        return Path(name)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+
+
+def _replace_with_encrypted(source_path, destination):
+    encrypted = _encrypted_temp(source_path, destination)
+    try:
+        os.replace(encrypted, destination)
+        try:
+            fd = os.open(Path(destination).parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
+    finally:
+        encrypted.unlink(missing_ok=True)
+
+
+def _migrate_artifacts(root):
+    """Encrypt legacy bundles and loose recording/sidecar files in place."""
+    root = Path(root)
+    candidates = []
+    library = root / "library"
+    if library.is_dir():
+        for backup in library.glob(".*.previous"):
+            name = backup.name[1:-len(".previous")]
+            folder = library / name
+            if RECORDING_ID.fullmatch(name) and backup.is_dir() and not backup.is_symlink():
+                if folder.is_dir():
+                    shutil.rmtree(backup)
+                elif not folder.exists():
+                    os.rename(backup, folder)
+    if READABLE_LIBRARY:
+        return
+    if library.is_dir():
+        candidates.extend(path for path in library.iterdir()
+                          if path.is_file() and path.suffix.lower() == ".zip")
+    if root.is_dir():
+        candidates.extend(path for path in root.iterdir()
+                          if path.is_file() and path.suffix.lower() in {".mp3", ".json", ".md", ".txt"})
+    for path in candidates:
+        if path.is_symlink() or is_encrypted(path):
+            continue
+        encrypt_file_atomic(path, ENCRYPTION_KEY)
+
+
+def _decode_saved_config(data, key):
+    """Read encrypted settings while accepting pre-encryption config files."""
+    data = dict(data) if isinstance(data, dict) else {}
+    sealed = data.pop("encrypted_settings", None)
+    if sealed:
+        secrets_data = unseal_json(sealed, key)
+        if not isinstance(secrets_data, dict):
+            raise ValueError("Encrypted settings are not a JSON object")
+        data.update(secrets_data)
+    return data
+
+
+def _encode_saved_config(data, key):
+    public = {k: v for k, v in data.items() if k not in {"token", "docling"}}
+    public["encrypted_settings"] = seal_json(
+        {"token": data.get("token", ""), "docling": data.get("docling", {})}, key)
+    return public
+
 def scan():
     out = []
     if not os.path.isdir(ROOT):
         return out
     for name in sorted(os.listdir(ROOT)):
-        if not name.lower().endswith(".mp3"):
+        if not name.lower().endswith(".mp3") or _replaced_loose_alias(name):
             continue
         path = os.path.join(ROOT, name)
-        size = os.path.getsize(path)
-        mtime = os.path.getmtime(path)
         entry = {
             "name": name,
-            "bytes": size,
-            "mtime": int(mtime),
             "sha16": None,
             "sidecar": None,
         }
@@ -148,19 +354,41 @@ def scan():
                 entry["sidecar"] = os.path.basename(sc)
                 break
         h = hashlib.sha256()
-        with open(path, "rb") as f:
-            while True:
-                chunk = f.read(1 << 20)
-                if not chunk:
-                    break
-                h.update(chunk)
-        entry["sha16"] = h.hexdigest()[:16]
+        try:
+            entry["mtime"] = int(os.path.getmtime(path))
+            with _open_artifact(path) as f:
+                f.seek(0, os.SEEK_END)
+                entry["bytes"] = f.tell()
+                f.seek(0)
+                while True:
+                    chunk = f.read(1 << 20)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            entry["sha16"] = h.hexdigest()[:16]
+        except (OSError, ValueError):
+            continue
         out.append(entry)
     bundles = Path(ROOT) / "library"
     if bundles.is_dir():
-        for path in sorted(bundles.glob("*.zip")):
+        for folder in sorted(bundles.iterdir()):
+            if not RECORDING_ID.fullmatch(folder.name) or not folder.is_dir():
+                continue
             try:
-                with zipfile.ZipFile(path) as z:
+                with LIBRARY_WRITE_LOCK:
+                    audio = next(path for path in _recording_files(folder) if path.suffix == ".mp3")
+                    with audio.open("rb") as stream:
+                        sha = stream_sha(stream)
+                    out.append({"name": audio.name, "bundle": folder.name + ".zip",
+                                "bytes": audio.stat().st_size, "mtime": int(audio.stat().st_mtime),
+                                "sha16": sha[:16], "sidecar": None})
+            except OSError:
+                continue
+        for path in sorted(bundles.glob("*.zip")):
+            if not BUNDLE.fullmatch(path.name) or path.with_suffix("").is_dir():
+                continue
+            try:
+                with _open_artifact(path) as artifact, zipfile.ZipFile(artifact) as z:
                     audio = next(i for i in z.infolist() if i.filename.endswith(".mp3"))
                     with z.open(audio) as f:
                         sha = stream_sha(f)
@@ -171,8 +399,14 @@ def scan():
     return out
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 30
+    server_version = "SecurePocketLink"
+    sys_version = ""
+
     def _check(self, qs):
-        if TOKEN and not hmac.compare_digest(self.headers.get("X-Pocket-Token", qs.get("k", [""])[0]).encode(), TOKEN.encode()):
+        supplied = self.headers.get("X-Pocket-Token", "")
+        if TOKEN and not hmac.compare_digest(supplied.encode("utf-8", "replace"), TOKEN.encode()):
+            time.sleep(0.2)
             self.send_response(401)
             self.end_headers()
             return False
@@ -185,8 +419,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._check({})
 
     def _copy_body(self, destination, limit):
+        if self.headers.get("Transfer-Encoding"):
+            self._json(400, {"error": "Chunked uploads are not supported"})
+            return False
         try:
-            size = int(self.headers.get("Content-Length", "0"))
+            raw_size = self.headers.get("Content-Length")
+            if raw_size is None or not re.fullmatch(r"[0-9]{1,12}", raw_size.strip()):
+                raise ValueError
+            size = int(raw_size)
         except ValueError:
             size = 0
         if not 0 < size <= limit:
@@ -208,33 +448,38 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Unknown library path"})
         if not self._write_access():
             return
+        if not UPLOAD_SLOT.acquire(blocking=False):
+            return self._json(429, {"error": "Another library upload is already in progress"})
         directory = Path(ROOT) / "library"
-        directory.mkdir(exist_ok=True)
-        fd, temp = tempfile.mkstemp(dir=directory)
-        os.close(fd)
+        temp = None
         try:
-            if not self._copy_body(Path(temp), 1024**3):
+            directory.mkdir(exist_ok=True)
+            fd, temp = tempfile.mkstemp(prefix="pocket-upload-", suffix=".zip")
+            os.close(fd)
+            if not self._copy_body(Path(temp), MAX_UPLOAD_BYTES):
                 return
             with zipfile.ZipFile(temp) as bundle:
                 content = bundle.infolist()
-                valid_names = all(not i.is_dir() and len(i.filename) <= 110 and
-                                  "/" not in i.filename and "\\" not in i.filename and
-                                  (i.filename.endswith((".mp3", ".transcript.md", ".summary.md")) or i.filename == "title.txt") and
-                                  (i.filename.endswith(".mp3") or i.file_size <= 2 * 1024**2)
+                filenames = [unicodedata.normalize("NFC", i.filename).casefold() for i in content]
+                valid_names = all(not i.is_dir() and _recording_member(i.filename) and
+                                  (i.filename.endswith(".mp3") or i.file_size <= 2 * 1024**2) and
+                                  i.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
                                   for i in content)
                 if (not valid_names or not 1 <= len(content) <= 4
+                    or len(set(filenames)) != len(filenames)
                     or sum(i.filename.endswith(".mp3") for i in content) != 1
-                    or sum(i.file_size for i in content) > 1024**3):
+                    or max(i.file_size for i in content if i.filename.endswith(".mp3")) <= 0
+                    or sum(i.file_size for i in content) > MAX_UPLOAD_BYTES):
                     return self._json(400, {"error": "Invalid library bundle"})
                 incoming_audio = next(i for i in content if i.filename.endswith(".mp3"))
                 with bundle.open(incoming_audio) as stream:
                     incoming_sha = stream_sha(stream)
             destination = directory / name
             with LIBRARY_WRITE_LOCK:
-                already_present = destination.is_file()
+                already_present = destination.is_file() or destination.with_suffix("").is_dir()
                 if already_present:
                     try:
-                        with zipfile.ZipFile(destination) as current:
+                        with _open_bundle(destination) as archive, zipfile.ZipFile(archive) as current:
                             existing = current.infolist()
                             existing_audio = next(i for i in existing if i.filename.endswith(".mp3"))
                             with current.open(existing_audio) as stream:
@@ -243,12 +488,15 @@ class Handler(BaseHTTPRequestHandler):
                             return self._json(409, {"error": "A different recording already uses this bundle name"})
                     except (OSError, zipfile.BadZipFile, StopIteration):
                         return self._json(409, {"error": "Existing library bundle is invalid"})
-                os.replace(temp, destination)
+                _store_bundle(temp, destination)
+                Path(temp).unlink(missing_ok=True)
             self._json(200 if already_present else 201, {"ok": True, "alreadyPresent": already_present})
-        except (OSError, zipfile.BadZipFile):
+        except (OSError, ValueError, zipfile.BadZipFile):
             self._json(400, {"error": "Incomplete library bundle"})
         finally:
-            Path(temp).unlink(missing_ok=True)
+            if temp:
+                Path(temp).unlink(missing_ok=True)
+            UPLOAD_SLOT.release()
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -268,21 +516,26 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not DOCLING_CONFIG.get("enabled"):
             return self._json(503, {"error": "Docling is disabled in Secure Pocket Link settings"})
-        with DOCLING_SLOT, tempfile.TemporaryDirectory(prefix="pocket-docling-") as workspace:
-            audio = path.endswith("/pre")
-            source = Path(workspace) / ("recording.mp3" if audio else "summary.md")
-            if not self._copy_body(source, 512 * 1024**2 if audio else 2 * 1024**2):
-                return
-            try:
-                from docling_client import process_docling
-                result = process_docling(source, kind="audio" if audio else "markdown", config=DOCLING_CONFIG)
-                payload = {"markdown": result["markdown"]}
-                if result.get("segments") is not None:
-                    payload["segments"] = result["segments"]
-                return self._json(200, payload)
-            except Exception as exc:
-                sys.stderr.write("[link] Docling processing failed\n")
-                return self._json(502, {"error": "Docling processing failed. Check its settings and model files."})
+        if not DOCLING_SLOT.acquire(blocking=False):
+            return self._json(429, {"error": "Another Docling request is already in progress"})
+        try:
+            with tempfile.TemporaryDirectory(prefix="pocket-docling-") as workspace:
+                audio = path.endswith("/pre")
+                source = Path(workspace) / ("recording.mp3" if audio else "summary.md")
+                if not self._copy_body(source, MAX_DOC_INPUT_BYTES if audio else 2 * 1024**2):
+                    return
+                try:
+                    from docling_client import process_docling
+                    result = process_docling(source, kind="audio" if audio else "markdown", config=DOCLING_CONFIG)
+                    payload = {"markdown": result["markdown"]}
+                    if result.get("segments") is not None:
+                        payload["segments"] = result["segments"]
+                    return self._json(200, payload)
+                except Exception:
+                    sys.stderr.write("[link] Docling processing failed\n")
+                    return self._json(502, {"error": "Docling processing failed. Check its settings and model files."})
+        finally:
+            DOCLING_SLOT.release()
 
     def _import_recording(self):
         if not self._write_access():
@@ -306,26 +559,22 @@ class Handler(BaseHTTPRequestHandler):
         directory.mkdir(parents=True, exist_ok=True)
         bundle_name = f"{day}-{start}-{expected_sha[:8]}.zip"
         destination = directory / bundle_name
-        try:
-            size = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            size = 0
-        if not 0 < size <= 1024**3:
-            return self._json(413, {"error": "Invalid recording size"})
-        fd, audio_path = tempfile.mkstemp(dir=directory, prefix="incoming-")
+        if not UPLOAD_SLOT.acquire(blocking=False):
+            return self._json(429, {"error": "Another library upload is already in progress"})
+        fd, audio_path = tempfile.mkstemp(prefix="pocket-incoming-", suffix=".mp3")
         os.close(fd)
         bundle_path = None
         try:
-            if not self._copy_body(Path(audio_path), 1024**3):
+            if not self._copy_body(Path(audio_path), MAX_UPLOAD_BYTES):
                 return
             with open(audio_path, "rb") as stream:
                 actual_sha = stream_sha(stream)
             if not hmac.compare_digest(actual_sha, expected_sha):
                 return self._json(422, {"error": "Audio SHA-256 did not match"})
             with LIBRARY_WRITE_LOCK:
-                if destination.is_file():
+                if destination.is_file() or destination.with_suffix("").is_dir():
                     try:
-                        with zipfile.ZipFile(destination) as bundle:
+                        with _open_bundle(destination) as artifact, zipfile.ZipFile(artifact) as bundle:
                             audio = next(i for i in bundle.infolist() if i.filename.endswith(".mp3"))
                             with bundle.open(audio) as stream:
                                 existing_sha = stream_sha(stream)
@@ -335,22 +584,22 @@ class Handler(BaseHTTPRequestHandler):
                                                 "sha256": expected_sha, "alreadyPresent": True})
                     except (OSError, zipfile.BadZipFile, StopIteration):
                         return self._json(409, {"error": "Existing recording bundle is invalid"})
-                fd, bundle_path = tempfile.mkstemp(dir=directory, prefix="bundle-", suffix=".zip")
+                fd, bundle_path = tempfile.mkstemp(prefix="pocket-bundle-", suffix=".zip")
                 os.close(fd)
                 recording_name = f"{day}_{start}.mp3"
                 with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_STORED) as bundle:
                     bundle.write(audio_path, recording_name)
                     bundle.writestr("title.txt", f"Recording {day} {start[0:2]}:{start[2:4]}")
-                os.replace(bundle_path, destination)
-                bundle_path = None
+                _store_bundle(bundle_path, destination)
                 return self._json(201, {"ok": True, "bundle": bundle_name,
                                         "sha256": expected_sha, "alreadyPresent": False})
-        except (OSError, zipfile.BadZipFile):
+        except (OSError, ValueError, zipfile.BadZipFile):
             return self._json(500, {"error": "Could not store recording"})
         finally:
             Path(audio_path).unlink(missing_ok=True)
             if bundle_path:
                 Path(bundle_path).unlink(missing_ok=True)
+            UPLOAD_SLOT.release()
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -372,7 +621,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._check(qs):
             return
         if u.path == "/health":
-            return self._json(200, {"ok": True, "server": "secure-pocket-link", "root": ROOT,
+            return self._json(200, {"ok": True, "server": "secure-pocket-link",
                                     "authenticated": bool(TOKEN), "writable": bool(TOKEN) and os.access(ROOT, os.W_OK),
                                     "backupConfigured": bool(ROOT and os.path.isdir(ROOT)),
                                     "docling": bool(DOCLING_CONFIG.get("enabled"))})
@@ -383,26 +632,38 @@ class Handler(BaseHTTPRequestHandler):
             if not BUNDLE.fullmatch(name):
                 return self._json(404, {"error": "Unknown library bundle"})
             path = Path(ROOT) / "library" / name
-            if not path.is_file():
+            if not path.is_file() and not path.with_suffix("").is_dir():
                 return self._json(404, {"error": "Missing library bundle"})
-            with path.open("rb") as f:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/zip")
-                self.send_header("Content-Length", str(os.fstat(f.fileno()).st_size))
-                self.end_headers()
-                shutil.copyfileobj(f, self.wfile)
+            try:
+                with _open_bundle(path) as f:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/zip")
+                    f.seek(0, os.SEEK_END)
+                    size = f.tell()
+                    f.seek(0)
+                    self.send_header("Content-Length", str(size))
+                    self.end_headers()
+                    shutil.copyfileobj(f, self.wfile)
+            except OSError:
+                if not getattr(self, "_response_code", 0):
+                    return self._json(500, {"error": "Could not read the library bundle"})
             return
         if u.path.startswith("/file/"):
             name = unquote(u.path[len("/file/"):])
+            if "\0" in name:
+                return self._json(404, {"error": "not found"})
             path = os.path.realpath(os.path.join(ROOT, name))
             if not path.startswith(os.path.realpath(ROOT) + os.sep) or not os.path.isfile(path):
                 return self._json(404, {"error": "not found"})
             ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
             self.send_response(200)
             self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(os.path.getsize(path)))
-            self.end_headers()
-            with open(path, "rb") as f:
+            with _open_artifact(path) as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(0)
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
                 while True:
                     chunk = f.read(1 << 20)
                     if not chunk:
@@ -421,8 +682,12 @@ class Handler(BaseHTTPRequestHandler):
                     return False
             except ValueError:
                 return False
-        elif data_request and self.headers.get("Sec-Fetch-Site") != "same-origin":
-            return False
+        if data_request:
+            supplied = self.headers.get("X-Admin-Token", "").encode("utf-8", "replace")
+            if not ADMIN_CODE or not hmac.compare_digest(supplied, ADMIN_CODE.encode()):
+                return False
+            if self.headers.get("Sec-Fetch-Site") not in (None, "same-origin"):
+                return False
         try:
             host = urlparse("//" + self.headers.get("Host", "").lower())
             hostname = host.hostname
@@ -454,17 +719,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; "
+                         "style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         self.end_headers()
         self.wfile.write(body)
 
     def _admin_settings(self):
         if not self._admin_request_allowed(data_request=True):
             return self._json(403, {"error": "Settings are available only from this computer"})
-        pairing_host = _pairing_host()
-        pairing_url = f"http://{_url_host(pairing_host)}:{PUBLIC_API_PORT}" if pairing_host else None
-        data = {"root": ROOT, "token": TOKEN, "docling": DOCLING_CONFIG,
+        pairing_url = _public_pairing_url()
+        data = {"root": ROOT, "token": TOKEN, "libraryFiles": READABLE_LIBRARY,
+                "docling": {"enabled": bool(DOCLING_CONFIG.get("enabled")),
+                            "docling_url": DOCLING_CONFIG.get("docling_url", "")},
                 "apiPort": PUBLIC_API_PORT, "adminPort": PUBLIC_ADMIN_PORT,
-                "pairingUrl": pairing_url, "hostNeedsManual": pairing_host is None}
+                "pairingUrl": pairing_url, "pairingScheme": "https" if API_TLS or PUBLIC_URL else "http",
+                "hostNeedsManual": pairing_url is None}
         return self._json(200, data)
 
     def _admin_status(self):
@@ -474,6 +743,7 @@ class Handler(BaseHTTPRequestHandler):
         api_thread = getattr(self.server, "api_thread", None)
         listener_running = bool(api_server and api_thread and api_thread.is_alive())
         lan_host = _pairing_host()
+        pairing_url = _public_pairing_url()
         exists = os.path.isdir(ROOT)
         writable = exists and os.access(ROOT, os.W_OK)
         with DIAGNOSTIC_LOCK:
@@ -484,6 +754,8 @@ class Handler(BaseHTTPRequestHandler):
             "uptimeSeconds": max(0, int(time.time() - STARTED_AT)),
             "apiListener": {"running": listener_running,
                              "address": f"{_url_host(lan_host)}:{PUBLIC_API_PORT}" if lan_host else None,
+                             "bind": API_BIND, "tls": API_TLS, "pairingUrl": pairing_url,
+                             "pairingScheme": "https" if API_TLS or PUBLIC_URL else "http",
                              "port": PUBLIC_API_PORT},
             "backup": {"root": ROOT, "exists": exists, "writable": writable,
                        "ready": exists and writable, "recordings": _library_count()},
@@ -514,7 +786,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, result)
 
     def _admin_save(self):
-        global ROOT, TOKEN, DOCLING_CONFIG, CONFIG
+        global ROOT, TOKEN, DOCLING_CONFIG, CONFIG, READABLE_LIBRARY
         if not self._admin_request_allowed(data_request=True):
             return self._json(403, {"error": "Settings are available only from this computer"})
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
@@ -532,26 +804,35 @@ class Handler(BaseHTTPRequestHandler):
             root = str(Path(root_value.strip()).expanduser().resolve())
             token = str(supplied.get("token", "")).strip()
             docling = supplied.get("docling", {})
-            if not root or len(root) > 4096 or not token or len(token) > 256:
-                raise ValueError("Choose a folder and provide a token")
+            if not root or len(root) > 4096 or not 16 <= len(token) <= 256:
+                raise ValueError("Choose a folder and a Link token of at least 16 characters")
             if not isinstance(docling, dict):
                 raise ValueError("Invalid Docling settings")
             os.makedirs(root, exist_ok=True)
             if not os.path.isdir(root) or not os.access(root, os.W_OK):
                 raise ValueError("The selected folder is not writable")
             docling_url = str(docling.get("docling_url", "")).strip()
-            if len(docling_url) > 2048 or (docling_url and not docling_url.startswith(("http://", "https://"))):
-                raise ValueError("Docling URL must start with http:// or https://")
+            if docling_url:
+                parsed = urlparse(docling_url)
+                if (len(docling_url) > 2048 or parsed.scheme not in ("http", "https")
+                        or not parsed.hostname or parsed.username is not None
+                        or parsed.query or parsed.fragment):
+                    raise ValueError("Enter a Docling URL without credentials, query, or fragment")
             with CONFIG_LOCK:
                 docling_config = dict(DOCLING_CONFIG)
                 docling_config.update({"enabled": bool(docling.get("enabled")),
                                        "docling_url": docling_url})
-                config = {"root": root, "token": token, "docling": docling_config}
+                readable = supplied.get("libraryFiles", READABLE_LIBRARY) is True
+                config = {"root": root, "token": token, "docling": docling_config,
+                          "library_files": readable, "public_url": PUBLIC_URL}
                 if CONFIG_PATH:
                     _write_config(CONFIG_PATH, config)
+                READABLE_LIBRARY = readable
                 ROOT, TOKEN, DOCLING_CONFIG, CONFIG = root, token, docling_config, config
             return self._json(200, {"ok": True})
-        except (ValueError, OSError, json.JSONDecodeError) as exc:
+        except OSError:
+            return self._json(400, {"error": "Could not access the configured folder or save settings"})
+        except ValueError as exc:
             return self._json(400, {"error": str(exc)})
 
     def _json(self, code, obj):
@@ -570,6 +851,10 @@ class Handler(BaseHTTPRequestHandler):
         super().send_response(code, message)
 
     def end_headers(self):
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        if API_TLS and not getattr(self.server, "is_admin", False):
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         super().end_headers()
         self._maybe_log_response()
 
@@ -613,24 +898,86 @@ class Handler(BaseHTTPRequestHandler):
         endpoint = _log_endpoint(path)
         sys.stderr.write(f"[link] {_log_method(getattr(self, 'command', ''))} {endpoint}\n")
 
+class LimitedHTTPServer(ThreadingHTTPServer):
+    def __init__(self, address, handler):
+        self.slots = threading.BoundedSemaphore(16)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            return self.shutdown_request(request)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 def main():
-    global TOKEN, ROOT, CONFIG_PATH, CONFIG, DOCLING_CONFIG, ADMIN_PORT
-    global PUBLIC_API_PORT, PUBLIC_ADMIN_PORT, PUBLIC_HOST_REQUIRED
+    global TOKEN, ROOT, CONFIG_PATH, CONFIG, DOCLING_CONFIG, ADMIN_PORT, ENCRYPTION_KEY
+    global PUBLIC_API_PORT, PUBLIC_ADMIN_PORT, PUBLIC_HOST_REQUIRED, API_TLS, API_BIND
+    global ADMIN_CODE, READABLE_LIBRARY, PUBLIC_URL
     ap = argparse.ArgumentParser()
     ap.add_argument("--root")
     ap.add_argument("--port", type=int, default=8732)
+    ap.add_argument("--api-host", default="127.0.0.1")
+    ap.add_argument("--proxy-backend", action="store_true",
+                    help="Bind the API to all interfaces for a trusted local TLS proxy")
+    ap.add_argument("--tls-cert", type=Path)
+    ap.add_argument("--tls-key", type=Path)
     ap.add_argument("--admin-port", type=int, default=8733)
     ap.add_argument("--admin-host", default="127.0.0.1")
     ap.add_argument("--token", default=None)
     ap.add_argument("--token-file", type=Path)
     ap.add_argument("--config", type=Path)
+    ap.add_argument("--key-file", type=Path)
+    ap.add_argument("--library-files", action="store_true",
+                    help="Store readable recording folders on a volume you encrypt")
     a = ap.parse_args()
     CONFIG_PATH = (a.config or _default_config_path()).expanduser().resolve()
+    key_spec = (a.key_file or CONFIG_PATH.with_name("link.key")).expanduser()
+    key_path = key_spec.parent.resolve() / key_spec.name
+    try:
+        raw_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        raw_config = {}
+    candidate_root = os.path.expanduser(a.root or (raw_config.get("root", "") if isinstance(raw_config, dict) else "")
+                                        or os.environ.get("LINK_DEFAULT_LIBRARY_ROOT", "")
+                                        or "~/Secure Pocket Library")
+    encrypted_artifacts_exist = _has_encrypted_artifacts(candidate_root)
+    if not key_path.exists() and ((isinstance(raw_config, dict) and raw_config.get("encrypted_settings"))
+                                  or encrypted_artifacts_exist):
+        ap.error(f"Link encryption key is missing at {key_path}; restore it from backup before starting")
+    try:
+        ENCRYPTION_KEY = load_or_create_key(key_path)
+    except (OSError, ValueError) as exc:
+        ap.error(f"Cannot load Link encryption key: {exc}")
     CONFIG = _read_config(CONFIG_PATH)
+    READABLE_LIBRARY = a.library_files or CONFIG.get("library_files") is True
+    PUBLIC_URL = os.environ.get("LINK_PUBLIC_URL", str(CONFIG.get("public_url") or "")).strip()
     ADMIN_PORT = a.admin_port
     PUBLIC_API_PORT = _env_port("LINK_PUBLIC_API_PORT", a.port)
     PUBLIC_ADMIN_PORT = _env_port("LINK_PUBLIC_ADMIN_PORT", a.admin_port)
     PUBLIC_HOST_REQUIRED = a.admin_host not in ("127.0.0.1", "::1", "localhost")
+    if bool(a.tls_cert) != bool(a.tls_key):
+        ap.error("--tls-cert and --tls-key must be provided together")
+    if a.proxy_backend and (a.tls_cert or a.api_host != "127.0.0.1"):
+        ap.error("--proxy-backend cannot be combined with --api-host or direct TLS flags")
+    if a.proxy_backend:
+        API_BIND = "0.0.0.0"
+    else:
+        API_BIND = a.api_host
+    API_TLS = bool(a.tls_cert)
+    if API_BIND not in ("127.0.0.1", "::1", "localhost") and not (API_TLS or a.proxy_backend):
+        ap.error("Non-loopback API binding requires direct TLS or --proxy-backend")
+    if a.proxy_backend and not PUBLIC_URL:
+        print("Warning: proxy backend has no LINK_PUBLIC_URL; pairing URL must be entered manually.", file=sys.stderr)
     if a.token_file:
         a.token = a.token_file.read_text(encoding="utf-8").strip()
         if not a.token:
@@ -641,24 +988,46 @@ def main():
     default_root = os.environ.get("LINK_DEFAULT_LIBRARY_ROOT", "").strip()
     ROOT = os.path.expanduser(a.root or saved_root or default_root or "~/Secure Pocket Library")
     os.makedirs(ROOT, exist_ok=True)
-    TOKEN = a.token or CONFIG.get("token") or secrets.token_urlsafe(24)
+    TOKEN = a.token or CONFIG.get("token") or secrets.token_urlsafe(32)
+    if not 16 <= len(TOKEN) <= 256:
+        ap.error("The Link token must contain 16 to 256 characters")
     saved_docling = CONFIG.get("docling")
     DOCLING_CONFIG = dict(saved_docling) if isinstance(saved_docling, dict) else {}
     if "docling_url" not in DOCLING_CONFIG and "LINK_DEFAULT_DOCLING_URL" in os.environ:
         DOCLING_CONFIG["docling_url"] = os.environ["LINK_DEFAULT_DOCLING_URL"].strip()
     if "enabled" not in DOCLING_CONFIG:
         DOCLING_CONFIG["enabled"] = _env_bool("LINK_DEFAULT_DOCLING_ENABLED", False)
-    CONFIG = {"root": os.path.realpath(ROOT), "token": TOKEN, "docling": DOCLING_CONFIG}
+    _public_pairing_url()
+    CONFIG = {"root": os.path.realpath(ROOT), "token": TOKEN, "docling": DOCLING_CONFIG,
+              "library_files": READABLE_LIBRARY, "public_url": PUBLIC_URL}
+    _migrate_artifacts(ROOT)
     if not a.token and not a.token_file:
         _write_config(CONFIG_PATH, CONFIG)
-    api = ThreadingHTTPServer(("0.0.0.0", a.port), Handler)
-    admin = ThreadingHTTPServer((a.admin_host, a.admin_port), Handler)
+    ADMIN_CODE = secrets.token_urlsafe(32)
+    code_path = CONFIG_PATH.with_name("admin.token")
+    fd, temp_code = tempfile.mkstemp(prefix=".admin-", dir=CONFIG_PATH.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(ADMIN_CODE + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_code, code_path)
+    finally:
+        Path(temp_code).unlink(missing_ok=True)
+    print(f"Settings unlock code file: {code_path}")
+    api = LimitedHTTPServer((API_BIND, a.port), Handler)
+    if API_TLS:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(str(a.tls_cert.expanduser()), str(a.tls_key.expanduser()))
+        api.socket = context.wrap_socket(api.socket, server_side=True, do_handshake_on_connect=False)
+    admin = LimitedHTTPServer((a.admin_host, a.admin_port), Handler)
     api.api_port = a.port
     admin.api_port = a.port
     admin.is_admin = True
     admin.api_server = api
     print(f"Secure Pocket Link library: {ROOT}")
-    print(f"Android API: http://0.0.0.0:{a.port} (token protected)")
+    print(f"Android API: {'https' if API_TLS else 'http'}://{API_BIND}:{a.port} (token protected)")
     print(f"Settings: http://127.0.0.1:{a.admin_port}/admin/")
     api_thread = threading.Thread(target=api.serve_forever, name="pocket-link-api", daemon=True)
     admin.api_thread = api_thread
@@ -722,6 +1091,27 @@ def _pairing_host():
     return None
 
 
+def _public_pairing_url():
+    configured = PUBLIC_URL
+    if configured:
+        parsed = urlparse(configured)
+        try:
+            valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+        except ValueError:
+            valid_port = False
+        if (parsed.scheme != "https" or not parsed.hostname or not valid_port
+                or parsed.username or parsed.password or parsed.path not in ("", "/")
+                or parsed.query or parsed.fragment):
+            raise ValueError("LINK_PUBLIC_URL must be an HTTPS origin such as https://link.example:8443")
+        return f"https://{parsed.netloc}"
+    if not API_TLS or API_BIND in ("127.0.0.1", "::1", "localhost"):
+        return None
+    host = _pairing_host()
+    if not host:
+        return None
+    return f"https://{_url_host(host)}:{PUBLIC_API_PORT}"
+
+
 def _url_host(host):
     return f"[{host}]" if ":" in host and not host.startswith("[") else host
 
@@ -729,11 +1119,26 @@ def _url_host(host):
 def _read_config(path):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        return _decode_saved_config(data, ENCRYPTION_KEY) if isinstance(data, dict) else {}
     except FileNotFoundError:
         return {}
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"Cannot read settings file {path}: {exc}")
+    except Exception:
+        raise SystemExit(f"Cannot read or authenticate settings file {path}; check its integrity and Link key") from None
+
+
+def _has_encrypted_artifacts(root):
+    root = Path(root)
+    candidates = []
+    try:
+        library = root / "library"
+        if library.is_dir():
+            candidates.extend(path for path in library.iterdir() if path.suffix.lower() == ".zip")
+        if root.is_dir():
+            candidates.extend(path for path in root.iterdir()
+                              if path.suffix.lower() in {".mp3", ".json", ".md", ".txt"})
+        return any(not path.is_symlink() and is_encrypted(path) for path in candidates)
+    except OSError:
+        return False
 
 
 def _write_config(path, data):
@@ -742,7 +1147,7 @@ def _write_config(path, data):
     temp = Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(json.dumps(data, indent=2) + "\n")
+            stream.write(json.dumps(_encode_saved_config(data, ENCRYPTION_KEY), indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         try:

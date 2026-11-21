@@ -11,11 +11,13 @@ import re
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 DEFAULT_DOCLING_URL = "http://docling:5001"
 DEFAULT_TIMEOUT_SECONDS = 600
+MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 _TIMED_SEGMENT = re.compile(
     r"^\s*\[time:\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\]\s*(.*?)\s*$"
 )
@@ -27,9 +29,20 @@ class DoclingError(RuntimeError):
 
 def _base_url(config: dict) -> str:
     value = str(config.get("docling_url") or DEFAULT_DOCLING_URL).strip().rstrip("/")
-    if not value.startswith(("http://", "https://")):
-        raise DoclingError("Docling URL must start with http:// or https://")
+    url = urlsplit(value)
+    if (url.scheme not in ("http", "https") or not url.hostname
+            or url.username is not None or url.query or url.fragment):
+        raise DoclingError("Docling URL must be an HTTP or HTTPS address without credentials")
     return value
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def open_docling_request(request, *, timeout):
+    return build_opener(NoRedirect()).open(request, timeout=timeout)
 
 
 def _timed_segments(markdown: str) -> list[dict]:
@@ -129,8 +142,11 @@ def process_docling(source: Path, *, kind: str, config: dict) -> dict:
     request = Request(_base_url(config) + "/v1/convert/file", data=form_body, headers=headers, method="POST")
     timeout = config.get("docling_timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
     try:
-        with urlopen(request, timeout=max(1, int(timeout))) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        with open_docling_request(request, timeout=min(900, max(1, int(timeout)))) as response:
+            contents = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(contents) > MAX_RESPONSE_BYTES:
+                raise DoclingError("Docling response exceeded the size limit")
+            payload = json.loads(contents.decode("utf-8"))
     except HTTPError as exc:
         raise DoclingError(f"Docling Serve returned HTTP {exc.code}") from exc
     except (URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:

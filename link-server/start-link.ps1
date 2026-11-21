@@ -19,7 +19,9 @@ if (Test-Path $Exe) {
   $Process = Start-Process -FilePath $Exe -WorkingDirectory $Base -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError $ErrorFile
 } else {
   $Script = Join-Path $Base 'link-server\secure_pocket_link.py'
-  $Process = Start-Process -FilePath 'python' -ArgumentList ('-u "{0}"' -f $Script) -WorkingDirectory $Base -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError $ErrorFile
+  $VenvPython = Join-Path $Base '.venv\Scripts\python.exe'
+  $Python = if (Test-Path $VenvPython) { $VenvPython } else { 'python' }
+  $Process = Start-Process -FilePath $Python -ArgumentList ('-u "{0}"' -f $Script) -WorkingDirectory $Base -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError $ErrorFile
 }
 $Process.Id | Set-Content $PidFile
 $Ready = $false

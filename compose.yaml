@@ -3,14 +3,15 @@ services:
     build:
       context: ./link-server
     ports:
-      # Android / LAN API. Override LINK_PUBLIC_API_PORT for test runs if occupied.
-      - "${LINK_PUBLIC_API_PORT:-8732}:8732"
+      # A trusted host TLS proxy or tailnet forwarder may connect here. The API
+      # is not directly reachable from the LAN by default.
+      - "127.0.0.1:${LINK_PUBLIC_API_PORT:-8732}:8732"
       # Desktop settings UI is reachable only from this computer.
       - "127.0.0.1:${LINK_PUBLIC_ADMIN_PORT:-8733}:8733"
     environment:
       LINK_PUBLIC_API_PORT: "${LINK_PUBLIC_API_PORT:-8732}"
       LINK_PUBLIC_ADMIN_PORT: "${LINK_PUBLIC_ADMIN_PORT:-8733}"
-      LINK_PUBLIC_HOST: "${LINK_PUBLIC_HOST:-}"
+      LINK_PUBLIC_URL: "${LINK_PUBLIC_URL:-}"
       LINK_DEFAULT_LIBRARY_ROOT: /data
       LINK_DEFAULT_DOCLING_URL: http://docling:5001
       LINK_DEFAULT_DOCLING_ENABLED: "true"
@@ -19,13 +20,22 @@ services:
       - link-config:/config
     depends_on:
       docling:
-        condition: service_healthy
+        # Keep backup API startup independent of first-run model downloads.
+        condition: service_started
     restart: unless-stopped
+    command: ["python", "secure_pocket_link.py", "--proxy-backend", "--port", "8732", "--admin-host", "0.0.0.0", "--admin-port", "8733", "--config", "/config/config.json"]
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:size=${LINK_TMP_SIZE:-512m},mode=1777
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: "${LINK_MEMORY_LIMIT:-1g}"
+    cpus: "${LINK_CPU_LIMIT:-1.0}"
+    networks:
+      - processing
 
   docling:
     # Thin adapter image: pinned official Docling Serve base plus upstream ASR extra.
@@ -40,8 +50,14 @@ services:
       UVICORN_PORT: "5001"
       HOME: /models
       HF_HOME: /models/huggingface
+      DOCLING_SERVE_ARTIFACTS_PATH: /models/docling
+      DOCLING_HEALTH_URL: http://127.0.0.1:5001/health
     volumes:
       - docling-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp:size=${DOCLING_TMP_SIZE:-2g},mode=1777
+      - /var/tmp:size=64m,mode=1777
     expose:
       - "5001"
     healthcheck:
@@ -49,14 +65,28 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=5).read()"
+        - "import os, ssl, urllib.request; urllib.request.urlopen(os.environ['DOCLING_HEALTH_URL'], timeout=5, context=ssl.create_default_context(cafile=os.environ.get('DOCLING_HEALTH_CA'))).read(1024)"
       interval: 15s
       timeout: 8s
       retries: 20
       start_period: 45s
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: "${DOCLING_MEMORY_LIMIT:-6g}"
+    cpus: "${DOCLING_CPU_LIMIT:-2.0}"
+    shm_size: "${DOCLING_SHM_SIZE:-256m}"
+    networks:
+      - processing
 
 volumes:
   link-library:
   link-config:
   docling-models:
+
+networks:
+  processing:
+    driver: bridge

@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import com.cairn.securepocket.protocol.Commands
+import com.cairn.securepocket.vault.SecurePreferences
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.channels.Channel
@@ -45,7 +46,7 @@ class BleTransport(context: Context) : Transport {
     }
     private fun signalLost() {
         if (state.value != TransportState.READY ||
-            !app.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("pocket_separation_alerts", false)) return
+            !SecurePreferences.open(app, "settings").getBoolean("pocket_separation_alerts", false)) return
         val nm = app.getSystemService(android.app.NotificationManager::class.java)
         nm.createNotificationChannel(android.app.NotificationChannel("pocket_connection", "Pocket connection", android.app.NotificationManager.IMPORTANCE_DEFAULT))
         val open = android.app.PendingIntent.getActivity(app, 0, android.content.Intent(app, com.cairn.securepocket.MainActivity::class.java),
@@ -135,7 +136,7 @@ class BleTransport(context: Context) : Transport {
     private fun start() {
         val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
             ?: return fail("Turn on Bluetooth and try again.")
-        val known = app.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("ble_mac", null)
+        val known = SecurePreferences.open(app, "settings").getString("ble_mac", null)
         val callback = object : ScanCallback() {
             override fun onScanResult(type: Int, result: ScanResult) {
                 if (scan !== this) return
@@ -196,7 +197,7 @@ class BleTransport(context: Context) : Transport {
             if (d.characteristic.uuid == eventId) subscribe(g, responseId)
             else if (d.characteristic.uuid == responseId) {
                 handshaking = true
-                val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                val prefs = SecurePreferences.open(app, "settings")
                 val clientId = prefs.getString("pocket_client_id", null) ?: UUID.randomUUID().toString()
                     .replace("-", "").take(16).also { prefs.edit().putString("pocket_client_id", it).apply() }
                 writes.addLast(Commands.encode("APP&SK&$clientId"))
@@ -224,7 +225,7 @@ class BleTransport(context: Context) : Transport {
         if (handshaking && id == eventId && bytes.toString(Charsets.US_ASCII).trimEnd(0.toChar()) == "MCU&SK&OK") {
             clearDeadline()
             handshaking = false
-            app.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putString("ble_mac", g.device.address).apply()
+            SecurePreferences.open(app, "settings").edit().putString("ble_mac", g.device.address).apply()
             com.cairn.securepocket.Graph.pocketLocation.connected(g.device.address)
             session = UUID.randomUUID().toString()
             lifecycle.trySend(TransportEvent.SessionReset(session))

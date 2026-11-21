@@ -1,0 +1,45 @@
+# Optional Link-to-Docling TLS. Create a private CA and a server certificate
+# with DNS SAN `docling`; keep the private key outside the repository.
+services:
+  link:
+    environment:
+      SSL_CERT_FILE: /run/secrets/docling-ca.pem
+      LINK_DEFAULT_DOCLING_URL: https://docling:5001
+    volumes:
+      - type: bind
+        source: ${DOCLING_TLS_CA_FILE:?Set DOCLING_TLS_CA_FILE to the CA certificate file}
+        target: /run/secrets/docling-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+  docling:
+    environment:
+      DOCLING_HEALTH_URL: https://docling:5001/health
+      DOCLING_HEALTH_CA: /run/secrets/docling-ca.pem
+    command:
+      - docling-serve
+      - run
+      - --ssl-certfile
+      - /run/secrets/docling/tls.crt
+      - --ssl-keyfile
+      - /run/secrets/docling/tls.key
+    volumes:
+      - docling-models:/models
+      - type: bind
+        source: ${DOCLING_TLS_CA_FILE:?Set DOCLING_TLS_CA_FILE to the CA certificate file}
+        target: /run/secrets/docling-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DOCLING_TLS_CERT_FILE:?Set DOCLING_TLS_CERT_FILE to the Docling certificate file}
+        target: /run/secrets/docling/tls.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DOCLING_TLS_KEY_FILE:?Set DOCLING_TLS_KEY_FILE to the Docling private key file}
+        target: /run/secrets/docling/tls.key
+        read_only: true
+        bind:
+          create_host_path: false

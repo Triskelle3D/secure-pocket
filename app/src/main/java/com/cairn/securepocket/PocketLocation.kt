@@ -6,15 +6,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.CancellationSignal
-import com.cairn.securepocket.vault.saveMarkdown
-import java.io.File
+import com.cairn.securepocket.vault.SecurePreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class PocketLocation(private val context: Context) {
     data class Fix(val latitude: Double, val longitude: Double, val time: Long)
 
-    private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.open(context, "settings")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var address: String? = null
     private var job: Job? = null
@@ -24,18 +23,25 @@ class PocketLocation(private val context: Context) {
     fun permitted(): Boolean = listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
         .any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
-    private fun file(mac: String?): File? = mac?.takeIf { it.matches(Regex("([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}")) }
-        ?.let { File(context.noBackupFilesDir, "pocket-last-${it.replace(":", "")}.txt") }
+    private fun key(mac: String?) = "last_location_${mac.orEmpty().replace(":", "").lowercase()}"
 
     private fun load(mac: String?): Fix? = runCatching {
-        val lines = file(mac)?.readLines() ?: return null
-        Fix(lines[0].toDouble(), lines[1].toDouble(), lines[2].toLong())
+        val prefKey = key(mac)
+        val saved = prefs.getString(prefKey, null)
+        if (saved != null) return@runCatching saved.split(',').let { Fix(it[0].toDouble(), it[1].toDouble(), it[2].toLong()) }
+        // Migrate the previous private plaintext location once, then remove it.
+        val old = context.noBackupFilesDir.listFiles()?.firstOrNull { it.name == "pocket-last-${mac.orEmpty().replace(":", "")}.txt" }
+        val lines = old?.readLines() ?: return null
+        val fix = Fix(lines[0].toDouble(), lines[1].toDouble(), lines[2].toLong())
+        prefs.edit().putString(prefKey, "${fix.latitude},${fix.longitude},${fix.time}").commit()
+        old.delete()
+        fix
     }.getOrNull()
 
     fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("remember_pocket_location", value).apply()
         if (!value) {
-            file(address ?: prefs.getString("ble_mac", null))?.delete()
+            prefs.edit().remove(key(address ?: prefs.getString("ble_mac", null))).apply()
             lastSeen.value = null
         }
         startSampling()
@@ -68,7 +74,7 @@ class PocketLocation(private val context: Context) {
                                         System.currentTimeMillis() - point.time in 0..60000 &&
                                         point.time >= (lastSeen.value?.time ?: 0)) {
                                         val fix = Fix(point.latitude, point.longitude, point.time)
-                                        runCatching { file(mac)?.saveMarkdown("${fix.latitude}\n${fix.longitude}\n${fix.time}") }
+                                        runCatching { prefs.edit().putString(key(mac), "${fix.latitude},${fix.longitude},${fix.time}").commit() }
                                             .onSuccess { lastSeen.value = fix }
                                     }
                                 }

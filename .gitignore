@@ -1,6 +1,16 @@
 build/
 .gradle/
+.venv/
 local.properties
+.env
+.env.*
+!.env.example
+*.apk
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
 tools-dist/
 /dist/
 /SecurePocketLink.spec

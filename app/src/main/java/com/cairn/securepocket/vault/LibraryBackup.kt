@@ -31,8 +31,8 @@ import java.util.zip.ZipOutputStream
 
 /** Desktop stores recording bundles. NAS backup only uses the configured Wi-Fi network. */
 class LibraryBackup(private val context: Context) {
-    private val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private val receipt = context.getSharedPreferences("library_receipts", Context.MODE_PRIVATE)
+    private val p = SecurePreferences.open(context, "settings")
+    private val receipt = SecurePreferences.open(context, "library_receipts")
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -81,10 +81,7 @@ class LibraryBackup(private val context: Context) {
         if (nas && network == null) return@withContext "Connect to your configured home Wi-Fi before importing to the NAS."
         try {
             val path = if (method == "WebDAV") "/" else "/health"
-            val url = URI(base + path)
-            require(url.scheme in listOf("http", "https") && url.host != null && url.userInfo == null && url.query == null && url.fragment == null) {
-                "Enter a valid server URL in Settings → Library Location."
-            }
+            val url = checkedRemoteUri(base + path)
             val connection = ((network?.openConnection(url.toURL()) ?: url.toURL().openConnection()) as HttpURLConnection)
             try {
                 connection.instanceFollowRedirects = false
@@ -189,7 +186,11 @@ class LibraryBackup(private val context: Context) {
                 require(base.isNotEmpty()) { "Enter the library server URL." }
                 for (rec in Graph.runner.vault.list().filter { !it.partial }) {
                     val paths = listOf(rec.transcript, rec.summary, rec.titleFile)
-                    val signature = rec.sha256 + paths.joinToString(":") { if (it.isFile) VaultStore.sha256(it) else "-" }
+                    val signature = rec.sha256 + paths.joinToString(":") { if (it.isFile) {
+                        java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(readEncryptedText(it).toByteArray(Charsets.UTF_8))
+                            .joinToString("") { byte -> "%02x".format(byte) }
+                    } else "-" }
                     val key = "$destination:$mode:$base:${rec.localId}"
                     if (!force && receipt.getString(key, null) == signature) continue
                     if (nas) check(homeNetwork() == network) { "Home Wi-Fi disconnected." }
@@ -204,23 +205,24 @@ class LibraryBackup(private val context: Context) {
 
     private fun upload(rec: VaultStore.Record, webdav: Boolean, base: String, token: String, user: String, network: Network?) {
         val bundle = File.createTempFile("pocket-", ".zip", context.cacheDir)
+        var audioPlain: File? = null
         try {
             val title = rec.title.replace(Regex("""[^\p{L}\p{N} ._-]"""), "_").trim(' ', '.').take(70).ifBlank { "Recording" }
+            audioPlain = Graph.runner.vault.materialize(rec.mp3)
             ZipOutputStream(bundle.outputStream()).use { zip ->
-                listOf(rec.mp3 to "$title.mp3", rec.transcript to "$title.transcript.md",
+                listOf(requireNotNull(audioPlain) to "$title.mp3", rec.transcript to "$title.transcript.md",
                     rec.summary to "$title.summary.md", rec.titleFile to "title.txt").forEach { (file, name) ->
                     if (file.isFile) {
                         zip.putNextEntry(ZipEntry(name))
-                        file.inputStream().use { it.copyTo(zip) }
+                        if (file.name.endsWith(".plain")) file.inputStream().use { it.copyTo(zip) }
+                        else zip.write(readEncryptedText(file).toByteArray(Charsets.UTF_8))
                         zip.closeEntry()
                     }
                 }
             }
             val key = URLEncoder.encode(rec.localId, "UTF-8")
             val path = if (webdav) "/$key.zip" else "/library/$key.zip"
-            val url = URI(base + path)
-            require(url.scheme in listOf("http", "https") && url.host != null && url.userInfo == null &&
-                url.query == null && url.fragment == null) { "Invalid library server URL." }
+            val url = checkedRemoteUri(base + path)
             val c = ((network?.openConnection(url.toURL()) ?: url.toURL().openConnection()) as HttpURLConnection)
             try {
                 c.instanceFollowRedirects = false
@@ -237,7 +239,7 @@ class LibraryBackup(private val context: Context) {
                 c.outputStream.use { output -> bundle.inputStream().use { it.copyTo(output) } }
                 c.result()
             } finally { c.disconnect() }
-        } finally { bundle.delete() }
+        } finally { bundle.delete(); audioPlain?.delete() }
     }
 }
 

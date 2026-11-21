@@ -2,11 +2,16 @@ package com.cairn.securepocket
 
 import com.cairn.securepocket.capture.CaptureSink
 import com.cairn.securepocket.protocol.SessionState
+import com.cairn.securepocket.vault.DeviceEncryption
 import com.cairn.securepocket.vault.VaultStore
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.concurrent.CopyOnWriteArrayList
+import javax.crypto.KeyGenerator
+import org.junit.After
+import org.junit.Before
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -18,6 +23,15 @@ import org.junit.rules.TemporaryFolder
 class CaptureVaultTest {
 
     @JvmField @Rule val tmp = TemporaryFolder()
+
+    @Before fun setUpKey() {
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        DeviceEncryption.testKeyProvider = { key }
+    }
+
+    @After fun clearKey() {
+        DeviceEncryption.testKeyProvider = null
+    }
 
     private fun ascii(s: String) = s.toByteArray(java.nio.charset.StandardCharsets.US_ASCII)
 
@@ -72,9 +86,12 @@ class CaptureVaultTest {
         )
         assertEquals(VaultStore.Verification.MATCHED, store.verify(rec))
         val rel = rec.mp3.absolutePath.substringAfter("vaultA/")
-        assertTrue("layout Pocket/date/HHmmss: $rel", rel.matches(Regex("""Pocket/2026-11-18/082946_.*\.mp3""")))
+        assertTrue("layout Pocket/date/HHmmss: $rel", rel.matches(Regex("""Pocket/2026-11-18/082946_.*\.mp3\.enc""")))
         assertTrue(rec.sidecar.exists())
         assertTrue(rec.mp3.exists())
+        assertTrue(!rec.mp3.readBytes().contentEquals(payload))
+        val playback = store.materialize(rec.mp3)
+        try { assertArrayEquals(payload, playback.readBytes()) } finally { playback.delete() }
         assertEquals(1, store.list().size)
 
         // wrong device claim -> FAILED, and never touches the original
@@ -87,8 +104,6 @@ class CaptureVaultTest {
             deviceExpectedBytes = 999L, lengthSeconds = null,
         )
         assertEquals(VaultStore.Verification.MISMATCHED, storeB.verify(recB))
-        assertEquals(payload.size.toLong(), recB.mp3.lengthOfSafe())
+        assertEquals(payload.size.toLong(), recB.bytes)
     }
-
-    private fun File.lengthOfSafe(): Long = length()
 }

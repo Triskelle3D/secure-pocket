@@ -43,7 +43,12 @@ internal class RecordingPlayback {
         }
     }
 
-    fun prepare(path: String) = guarded { player.setDataSource(path); player.prepareAsync() }
+    private var plaintext: java.io.File? = null
+    fun prepare(file: java.io.File) = guarded {
+        plaintext = file
+        player.setDataSource(file.absolutePath)
+        player.prepareAsync()
+    }
 
     fun pause() {
         startAfterSeek = false
@@ -96,7 +101,7 @@ internal class RecordingPlayback {
         }
     }
 
-    fun release() { player.release() }
+    fun release() { player.release(); plaintext?.delete(); plaintext = null }
 
     private fun requestSeek(ms: Long, play: Boolean) = guarded {
         seeking = true
@@ -141,7 +146,7 @@ internal fun rememberRecordingPlayback(record: VaultStore.Record): RecordingPlay
     val playback = remember(record.mp3) { RecordingPlayback() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(playback, lifecycle) {
-        playback.prepare(record.mp3.absolutePath)
+        playback.prepare(com.cairn.securepocket.Graph.runner.vault.materialize(record.mp3))
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) playback.pause() }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); playback.release() }

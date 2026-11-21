@@ -24,7 +24,7 @@ For phone access, configure direct TLS with a certificate trusted by Android, or
 
 For a local proxy, leave Link on its loopback default and configure the proxy to forward HTTPS traffic to `127.0.0.1:8732`. For a container or other trusted proxy backend that must bind the API on all internal interfaces, pass `--proxy-backend`, restrict network access to the proxy, and set `LINK_PUBLIC_URL` to the full external HTTPS origin (for example `https://link.example:8443`). Link does not trust forwarded host or scheme headers. Do not expose the plain HTTP backend directly to a LAN.
 
-To run it in the background and open settings automatically, use `link-server/start-link.sh` on macOS/Linux or `link-server/start-link.ps1` on Windows. The browser can be closed and Link keeps running. Stop it with `link-server/stop-link.sh` or `link-server/stop-link.ps1`. These launchers use the packaged executable in `dist/` if present, otherwise Python. Logs and PID files are stored in the platform config directory.
+To run it in the background and open settings automatically, use `link-server/start-link.sh` on macOS/Linux or `link-server/start-link.ps1` on Windows. The browser can be closed and Link keeps running. Stop it with `link-server/stop-link.sh` or `link-server/stop-link.ps1`. On macOS and Linux, the launcher prefers the source checkout's `.venv` when available. On Windows, it checks for the packaged executable in `dist/` first. Logs and PID files are stored in the platform config directory.
 
 The first run creates a token and settings file automatically. Defaults are:
 

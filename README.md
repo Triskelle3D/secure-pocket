@@ -1,8 +1,12 @@
-# Secure Pocket
+<h1 align="center">Secure Pocket</h1>
 
-<img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket icon, a green padlock with binary digits and microphones">
+<p align="center">
+  <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket icon, a green padlock with binary digits and microphones">
+</p>
 
 Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**. It imports recordings over Bluetooth, plays the original audio, and lets you create and edit transcripts and summaries. Keep the library on your phone or back it up to a computer or NAS you control.
+
+**Recorder security.** Secure Pocket works with the PKT01’s factory firmware, including after a factory reset. The recorder’s Bluetooth protocol lacks authenticated encryption. Someone nearby could intercept traffic or impersonate the recorder. The app’s encryption cannot protect recordings while they’re on the recorder or in transit from it.
 
 ## Choose your setup
 

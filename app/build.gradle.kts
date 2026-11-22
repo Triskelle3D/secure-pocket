@@ -36,6 +36,16 @@ val verifyVendoredRuntime = tasks.register("verifyVendoredRuntime") {
 }
 tasks.named("preBuild") { dependsOn(verifyVendoredRuntime) }
 
+val releaseStoreFile = providers.environmentVariable("SECURE_POCKET_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("SECURE_POCKET_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("SECURE_POCKET_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("SECURE_POCKET_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+val releaseSigningConfigured = releaseSigningValues.any { !it.isNullOrBlank() }
+if (releaseSigningConfigured && releaseSigningValues.any { it.isNullOrBlank() }) {
+  error("Set all SECURE_POCKET_RELEASE_STORE_FILE, STORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD values to sign a release APK")
+}
+
 android {
   namespace = "com.cairn.securepocket"
   compileSdk = 36
@@ -46,6 +56,15 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     versionCode = 9
     versionName = "1.8.0"
+  }
+
+  if (releaseSigningConfigured) {
+    signingConfigs.create("securePocketRelease") {
+      storeFile = file(checkNotNull(releaseStoreFile))
+      storePassword = checkNotNull(releaseStorePassword)
+      keyAlias = checkNotNull(releaseKeyAlias)
+      keyPassword = checkNotNull(releaseKeyPassword)
+    }
   }
 
   // Instrumentation uses a separate package so it cannot replace a user's app data.
@@ -61,6 +80,7 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      if (releaseSigningConfigured) signingConfig = signingConfigs.getByName("securePocketRelease")
     }
   }
   compileOptions {

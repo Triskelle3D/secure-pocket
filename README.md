@@ -1,118 +1,148 @@
 <h1 align="center">Secure Pocket</h1>
 
 <p align="center">
-  <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket icon, a green padlock with binary digits and microphones">
+  <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket green padlock icon">
 </p>
 
-Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**. It imports recordings over Bluetooth, plays the original audio, and lets you create and edit transcripts and summaries. Keep the library on your phone or back it up to a computer or NAS you control.
+Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**. It imports recordings over Bluetooth, plays audio, and creates editable transcripts and summaries. Keep recordings on your phone or back them up to a computer or NAS you control.
 
-**Recorder security.** Secure Pocket works with the PKT01’s factory firmware, including after a factory reset. The recorder’s Bluetooth protocol lacks authenticated encryption. Someone nearby could intercept traffic or impersonate the recorder. The app’s encryption cannot protect recordings while they’re on the recorder or in transit from it.
+## Start here
 
-## Choose your setup
+1. Download the latest APK from [Secure Pocket Android releases](releases) to an Android 11+ phone. Open the APK, allow your browser or file manager to install apps if Android asks, then tap **Install** and **Open**.
+2. Prepare the Pocket recorder as described below, then connect it in **Device → Connect Pocket**.
+3. Import a recording. Find its audio, transcript, and summary in **Library**.
+4. Add Secure Pocket Link only if you want computer or NAS backups. Add Docling only if you want server-side transcription or formatting.
 
-| I want to… | What I need |
-| --- | --- |
-| Import and play recordings, with optional offline transcription and summaries | [Secure Pocket for Android](#1-install-secure-pocket-on-android) and a Pocket recorder |
-| Back up to my computer or a NAS, including Samba/SMB | Android plus [Secure Pocket Link](#2-add-secure-pocket-link-for-backups) on Windows, Linux, Intel Mac, or Apple Silicon Mac |
-| Use Docling to transcribe recordings or format summaries | Android plus [Link + Docling](#3-add-docling-for-server-processing), running in Docker Compose on a computer or server |
+### Prepare or reset the Pocket
 
-**Start with Android.** Link is optional. The Docker stack includes Link, so it can handle both backups and Docling from the same installation. If your NAS already offers WebDAV, Android can also back up directly to it.
+Before first pairing, factory-reset the Pocket:
 
-## 1. Install Secure Pocket on Android
+1. **Back up anything you want to keep.** Factory reset permanently deletes every recording stored on the Pocket itself.
+2. Tap the Pocket’s button three times.
+3. Press and hold the button until the LED turns blue.
+4. Keep the Pocket near the phone. In Secure Pocket, open **Device → Connect Pocket** and follow the Bluetooth permission prompts.
 
-**You need** a Pocket PKT01 and a phone with Android 11 or later and Bluetooth.
+Resetting the Pocket does not delete the phone’s Secure Pocket library or Link backup.
 
-1. Download the signed `SecurePocket-1.8.0.apk` on your phone. [Android release](http://swamp-hub:3000/Matt/secure-pocket/releases/tag/android-v1.8.0)
-2. Open the downloaded APK. If Android asks permission to install apps from your browser or file manager, allow it for this installation. Tap **Install**, then **Open**.
-3. In Secure Pocket, go to **Device → Connect Pocket** and grant Bluetooth permission. Keep the recorder nearby. Expand **Recordings on Pocket** and tap **Import**.
-4. Open **Library** to play the audio or view the transcript and summary. The bundled English Vosk engine transcribes on the phone. For summaries, [choose a model](#choose-a-summary-model).
+## Add Secure Pocket Link
 
-Earlier debug builds use a different signing key. Back up your library to Link and verify the backup before replacing a debug build. A recorder factory reset erases its recordings. Preserve them before resetting a recorder that still contains material you need.
+Secure Pocket Link (Link) is an optional background app. It stores encrypted backups in a folder on a Windows, macOS, or Linux computer. You can choose a local disk or a mounted NAS folder, including Samba/SMB. Link has no cloud service. The Android phone and computer must be able to reach one another.
 
-## 2. Add Secure Pocket Link for backups
+### Install Link on Windows
 
-**You need** a computer or server with a writable folder and a network your phone can reach. Link runs in the background. Its settings open in your browser.
+1. Install [Python 3.10 or newer](https://www.python.org/downloads/windows/). During setup, enable **Add Python to PATH**.
+2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open PowerShell in the extracted project folder (the folder containing `link-server`).
+3. Create Link’s Python environment and install its dependencies:
 
-1. Choose a download and open a terminal in the extracted folder.
-   - **Windows, macOS, or Linux.** Install Python 3.10 or newer, extract the source ZIP, and install the runtime requirements in a virtual environment. [Source ZIP](http://swamp-hub:3000/Matt/secure-pocket/archive/master.zip), [Python downloads](https://www.python.org/downloads/), [Link install commands](link-server/README.md#run-from-source)
-2. Run the start command from the table below. Configure a trusted HTTPS proxy or direct TLS for phone access. Tailscale Serve is one option for a private network. [Link HTTPS setup](link-server/README.md#run-from-source)
-3. Open Link settings on the computer and unlock them with the code in `admin.token`. Check that the library folder is writable and the page says **Ready to receive Pocket recordings**. To use a NAS folder through Link, mount the share on the computer and choose that folder here. [Link settings](http://127.0.0.1:8733/admin/)
-4. On Android, open **Settings → Library Location → Secure Pocket Link**. Put the server computer’s LAN IP address and LAN HTTPS port in **Local URL (preferred)**, for example `https://192.168.1.27:PORT`. Put the HTTPS phone URL from **Connect the Android app** in **Tailscale URL (fallback)**, then copy the **Link token**. Secure Pocket tries the local URL first and uses the Tailscale URL if local access fails. Both addresses must use HTTPS with certificates trusted by Android. Do not put a plain `http://` address here.
-5. Tap **Test connection**, then **Save settings**. Leave **Also keep a copy on this phone** on for Android processing, offline playback, and automatic backup. Use **Back up now · saved settings** to send recordings already on your phone.
-
-**Addresses for this setup.** For Link backups on the Mac, set **Local URL (preferred)** to `https://192.168.1.58:10444` and **Tailscale URL (fallback)** to `https://redacted-hostname.redacted-tailnet-name.ts.net:8443`. The Mac proxy is bound to its LAN address and reaches Link on loopback. For a Link server on Swamp Hub, use `https://192.168.1.27:10444` as local and `https://swamp-hub.redacted-tailnet-name.ts.net:10443` as Tailscale fallback. Both local listeners use the Tailscale HTTPS certificate. Secure Pocket validates a local IP connection against the hostname in its Tailscale URL. Keep both URLs on HTTPS. Ports `8732` and `18732` are loopback-only API ports and must not go in these fields.
-
-| Computer | Start Link | Stop Link |
-| --- | --- | --- |
-| macOS or Linux | `sh ./link-server/start-link.sh` | `sh ./link-server/stop-link.sh` |
-| Windows PowerShell | `.\link-server\start-link.ps1` | `.\link-server\stop-link.ps1` |
-
-Closing the browser leaves Link running. The API backend and settings bind to the local computer by default. The API uses port **8732** and settings use **8733**. Link displays the configured HTTPS address for the phone. The [Link guide](link-server/README.md) covers logs, platform builds, and custom ports.
-
-Link encrypts backups by default. To open MP3 and Markdown files directly, enable **Save as readable recording folders** on a FileVault, BitLocker, LUKS, or similarly encrypted volume. Each recording has its own folder under `library/`. [Security details](docs/SECURITY.md)
-
-### Other storage choices
-
-- **Phone** keeps the library and processing on Android when you choose on-device providers.
-- **NAS with WebDAV.** On Android, choose **NAS → Connect with WebDAV** and enter the writable folder URL and credentials. Keep **Also keep a copy on this phone** on, save, and use **Back up now · saved settings**. This backup path passed testing on a Galaxy S20. The current Android build's WebDAV connection check fails on that phone and blocks server-only imports. Use Link for server-only NAS storage.
-- **NAS with Samba/SMB.** Connect to the share from the computer running Link. In Link settings, choose the mounted folder as the library location. In Android, choose **NAS → Connect through Secure Pocket Link** and enter the Link URL and token.
-- **Server-only imports** are enabled by switching off **Also keep a copy on this phone**. New imports go to the selected server as audio and require it to be reachable at import time. Keep the switch on if you want Android to transcribe and summarize new recordings automatically.
-
-For either NAS option, enter your home Wi-Fi name and grant the permissions shown for Wi-Fi and scheduled backups. With Link, tap **Test connection**, then **Save settings**. [How to mount an SMB share for Link](link-server/README.md#use-a-sambasmb-share)
-
-## 3. Add Docling for server processing
-
-**You need** Docker Desktop with Compose on macOS or Windows, or Docker Engine with the Compose plugin on Linux. The stack supports x86-64 and ARM64. It uses upstream Docling Serve with the audio runtime needed for Whisper. The first build pulls container images, and the first transcription may download the speech model. [Docker Compose installation](https://docs.docker.com/compose/install/)
-
-1. Download or clone the repository and open a terminal in its root, beside `compose.yaml`.
-2. Start the stack.
-
-   ```sh
-   docker compose up --build -d
+   ```powershell
+   py -3 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r link-server\requirements-runtime.txt
    ```
 
-3. Open [Link settings](http://127.0.0.1:8733/admin/) on the Docker host. Click **Check Docling**. The combined stack enables Docling and sets its internal service address on first launch.
-4. In Android **Settings → Transcription → Docling formatting**, choose a stage from the table below. For Swamp Hub, set **Local URL (preferred)** to `https://192.168.1.27:10444`, **Tailscale URL (fallback)** to `https://swamp-hub.redacted-tailnet-name.ts.net:10443`, and enter the **Link token** from the Docker Link settings page. Docling requests also try local first, then Tailscale. Enable **Send audio or text to selected processing servers**, then tap **Save settings**. [Docker HTTPS setup](link-server/DOCLING.md#host-folders-and-api-access)
-5. Import a new recording and open its transcript in **Library**. To use **Post** or **Both**, select a working summary model in **Settings → Summaries** before importing.
+4. Start Link in the background and open its settings page:
 
-| Docling stage | Transcription | Summary |
-| --- | --- | --- |
-| **Off** | Android uses the selected speech engine. | The selected summary model writes the Markdown. |
-| **Pre** | Docling transcribes the audio and provides timed segments when available. | The selected summary model writes the Markdown. |
-| **Post** | Android uses the selected speech engine. | The selected model writes the summary. Docling formats it. |
-| **Both** | Docling transcribes the audio and provides timed segments when available. | The selected model writes the summary. Docling formats it. |
+   ```powershell
+   .\link-server\start-link.ps1
+   ```
 
-Docling and **Library Location** are independent. You can use Docling while storing the library on your phone. If Link is already running on the host, the [Docker guide](link-server/DOCLING.md) shows how to run the stack on different ports. It also covers mounting a host or NAS folder, persistent data, and stopping the stack.
+5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, map it in File Explorer first, then select its folder. Save settings.
 
-## Choose a summary model
+Stop Link with `.\link-server\stop-link.ps1` in PowerShell. Link logs are in `%APPDATA%\secure-pocket-link\link.log` and `link-error.log`.
 
-Secure Pocket leaves Gemma weights out of the repository and builds because they have separate licensing terms. Download models from their publishers and review their terms first. [Gemma Terms of Use](https://gemma.ai/resources/terms/)
+### Install Link on macOS
 
-| Model | Where it runs | How to get it |
-| --- | --- | --- |
-| **Gemma 3 1B IT, INT4** | On the Android phone. Tested on the Galaxy S20. | Sign in to Hugging Face, accept the Gemma terms, then download `gemma3-1b-it-int4.task` from **Files and versions**. [LiteRT model files](https://huggingface.co/litert-community/Gemma3-1B-IT/tree/main) |
-| **IBM Granite 3.3 2B** | On a computer with Ollama. Apache 2.0. | Run `ollama pull granite3.3:2b`. [Ollama model page](https://ollama.com/library/granite3.3:2b) |
-| **Mistral 7B Instruct v0.3** | On a computer with Ollama. Apache 2.0. | Run `ollama pull mistral:7b`. [Ollama model page](https://ollama.com/library/mistral:7b) |
+1. Install [Python 3.10 or newer](https://www.python.org/downloads/macos/).
+2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open Terminal in the extracted project folder (the folder containing `link-server`).
+3. Create Link’s Python environment and install its dependencies:
 
-- **On the phone.** Copy the downloaded `.task` file to your phone, open **Settings → Summaries → On-device LLM → Choose model file**, and select it. Wait for the filename to appear and tap **Save settings**. The app uses CPU-compatible MediaPipe LLM bundles on ARM64 phones. Gemma INT4 is about 555 MB and the app stores a private copy.
-- **On your own computer.** Install Ollama and pull one of the models above. Put Ollama behind a trusted HTTPS proxy. In **Settings → Summaries → Ollama**, enter that HTTPS address and the exact model tag you pulled. Allow sending text and save. [Ollama downloads](https://ollama.com/download), [Ollama proxy setup](https://docs.ollama.com/faq#how-can-i-use-ollama-with-a-proxy-server)
-- **With a hosted provider.** Choose **OpenAI** or **OpenRouter**, enter your API key and the provider's model ID, allow sending text, and save. For another OpenAI-compatible provider, choose **Compatible server** and enter its API base URL, including its API prefix such as `/v1`.
+   ```sh
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r link-server/requirements-runtime.txt
+   ```
 
-To try a different summary model on an existing recording, open its summary and tap **Regenerate summary**.
+4. Start Link in the background and open its settings page:
 
-## If setup gets stuck
+   ```sh
+   sh ./link-server/start-link.sh
+   ```
 
-| Symptom | Check |
-| --- | --- |
-| Android cannot find the Pocket | Wake the recorder, keep it close to the phone, grant Bluetooth permissions, and disconnect any other app using the recorder. |
-| The browser shows Link is ready, but Android cannot connect | Copy the phone pairing URL and token from Link. A `127.0.0.1` URL on Android points to Android itself. Check the phone's network and the computer's firewall. |
-| A transcript is saved but there is no summary | Check the selected model, its file or API credentials, **Summarize and title new recordings**, and **Save settings**. |
-| Docling is reachable but the first import is slow | The first conversion may need to download and load the speech model. Check Link's recent activity and `docker compose logs docling`. |
+5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, connect in Finder with **Go → Connect to Server**, mount the share, then choose its folder. Save settings.
 
-For playback, speaker labels, finding the recorder, and library controls, see the [recording guide](docs/PROCESSING.md).
+Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Application Support/secure-pocket-link/`.
 
-## Build from source
+### Install Link on Linux
 
-Use Android Studio with JDK 17, Android SDK Platform 36, and Platform-Tools. Build with `./gradlew :app:assembleDebug` or `.\gradlew.bat :app:assembleDebug` on Windows. Install the debug APK with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+1. Install Python 3.10 or newer and its virtual-environment package. On Debian or Ubuntu, run `sudo apt install python3 python3-venv`. On Fedora, run `sudo dnf install python3`. On Arch Linux, run `sudo pacman -S python`.
+2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open a terminal in the extracted project folder (the folder containing `link-server`).
+3. Create Link’s Python environment and install its dependencies:
 
-Run `./gradlew :app:testValidationUnitTest :app:connectedValidationAndroidTest` on an unlocked Android device. Connected tests use the separate `com.cairn.securepocket.isotest` package.
+   ```sh
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r link-server/requirements-runtime.txt
+   ```
+
+4. Start Link in the background and open its settings page:
+
+   ```sh
+   sh ./link-server/start-link.sh
+   ```
+
+5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, mount it on Linux first, then choose its mounted folder. Save settings.
+
+Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `${XDG_CONFIG_HOME:-~/.config}/secure-pocket-link/`.
+
+### Connect Android to Link
+
+1. On the Link computer, open `http://127.0.0.1:8733/admin/`. The settings page says **Ready to receive Pocket recordings** when Link and the backup folder are ready.
+2. Unlock settings using the code in Link’s `admin.token` file. Keep this admin code private. It is different from the **Link token** used by the phone.
+3. In **Connect the Android app**, copy the **Link token** and configure an HTTPS address that the phone can reach. The API listens on `127.0.0.1:8732` by default, so it is not exposed to the network. Set up direct TLS or a trusted HTTPS proxy before connecting a phone. See the [Link guide](link-server/README.md#run-from-source) for TLS and network setup.
+4. In Secure Pocket, open **Settings → Library Location → Secure Pocket Link**. Enter the HTTPS server address under **Local URL (preferred)** and the fallback HTTPS address under **Tailscale URL (fallback)**, if configured. Paste the Link token. The app tries the local address first, then the fallback.
+5. Tap **Test connection**, then **Save settings**. Choose **Also keep a copy on this phone** if you want local playback, offline access, or on-phone processing. Turn it off for server-only imports; Link must be reachable when you import.
+
+Use the exact HTTPS URLs shown by your TLS setup. When both addresses are set, the local route’s certificate must match the hostname in the fallback URL. Do not enter `127.0.0.1` or a plain `http://` address on Android: `127.0.0.1` on the phone means the phone itself. Do not expose Link’s unencrypted API port directly to a LAN or the internet.
+
+## Optional: Docling server processing
+
+Docling transcribes audio or formats summaries. It is separate from Link’s backup function. The repository’s Docker Compose stack runs Secure Pocket Link with upstream Docling Serve. It supports x86-64 and ARM64; the first build and first transcription can take time to download images and speech models.
+
+You need [Docker Compose](https://docs.docker.com/compose/install/) on the computer or server. From the repository root, run:
+
+```sh
+docker compose up --build -d
+```
+
+Open Link settings at `http://127.0.0.1:8733/admin/`, choose a backup destination, and use **Check Docling**. Configure HTTPS for phone access as described in the [Docker guide](link-server/DOCLING.md#host-folders-and-api-access). In Android, open **Settings → Transcription → Docling formatting**, select **Pre**, **Post**, or **Both**, enable server processing, and save. Select a summary provider for **Post** or **Both**. **Pre** uses Docling for transcription, so a separate speech-to-text provider is not needed.
+
+For a computer folder or NAS share, mount the share on the Docker host and follow [the Docker storage guide](link-server/DOCLING.md#host-folders-and-api-access). Keep Link’s config volume and library volume backed up together; the config volume contains the encryption key needed to read backups.
+
+## Storage choices
+
+- **Phone:** recordings stay in the Android app’s library.
+- **Secure Pocket Link:** Link writes to its selected computer folder or mounted SMB share.
+- **WebDAV NAS:** configure the NAS URL and credentials in **Settings → Library Location**. Keep the phone copy enabled if the server-only connection check is unavailable on your device.
+
+Choose one primary library location in the app. Server-only imports require an active network connection to the selected server. WebDAV and SMB are different: WebDAV connects from Android; SMB shares should be mounted on the computer running Link.
+
+## Transcription and summaries
+
+Secure Pocket includes English Vosk speech-to-text for on-device transcription. Summary providers include an on-device model, Ollama, OpenAI, OpenRouter, and compatible HTTP services. Configure providers in **Settings → Transcription** and **Settings → Summaries**.
+
+The repository does not include Gemma model weights because their license has separate distribution terms. To use Gemma 3 1B IT INT4, accept the publisher’s terms and download the `.task` model from [LiteRT Community](https://huggingface.co/litert-community/Gemma3-1B-IT/tree/main). In the app, open **Settings → Summaries → On-device LLM → Choose model file**, select the downloaded file, confirm its name appears, then save.
+
+## Security and data
+
+Link encrypts recordings and settings secrets at rest. Keep its `link.key` with the Link configuration backup; losing the key can make encrypted backups unreadable. Read the [security notes](docs/SECURITY.md) before choosing a storage setup.
+
+The Pocket PKT01’s Bluetooth protocol does not provide authenticated encryption. Nearby attackers may be able to intercept or impersonate the recorder. Secure Pocket cannot protect recordings while they remain on the Pocket or while they travel over Bluetooth. A factory reset does not change this protocol limitation.
+
+## License
+
+Original Secure Pocket project code is available under the permissive [MIT License](LICENSE). You may use, copy, modify, reproduce, distribute, sublicense, and sell it, subject to the license terms. Third-party libraries, fonts, speech models, and other assets keep their own licenses; see the notices in `third_party/` and each component’s license. Gemma model weights are not included.
+
+## More information
+
+- [Secure Pocket Link setup, TLS, storage, and executable builds](link-server/README.md)
+- [Docker and Docling setup](link-server/DOCLING.md)
+- [Processing, transcripts, speakers, and summaries](docs/PROCESSING.md)
+- [Security notes](docs/SECURITY.md)
+- [Build Android from source](docs/BUILD.md)

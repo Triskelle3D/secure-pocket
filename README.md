@@ -4,11 +4,9 @@
   <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket green padlock icon">
 </p>
 
-Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product failed to match the experience I expected. I like the Pocket’s form, but its app left too much to be desired. Key features were missing or tied to a subscription, and I did not want to rely on trusting Pocket’s servers to handle my recordings.
+Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product fell short of what I expected. I like the Pocket’s form, but its app left too much to be desired. Key features I wanted were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
 
-After a very short amount of exploration I discovered pocket has left the BLE connection wide open and unencrypted, And thus: Secure Pocket was born!
-
-Secure Pocket allows you to take control of your hardware by importing recordings over Bluetooth, playing audio, and creating editable transcripts and summaries to an android app. Keep your library on your phone or back it up to a computer or NAS you control with Secure Pocket Link.
+During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app lets you take control of your recordings: import them over Bluetooth, play them, and create editable transcripts and summaries. Keep your library on your phone or back it up with Secure Pocket Link to a computer or NAS you control.
 
 > **CRITICAL SECURITY FLAW: the Pocket’s Bluetooth connection.** The PKT01’s current firmware does not authenticate or encrypt BLE communications. Someone nearby may be able to intercept traffic or impersonate the recorder. Secure Pocket encrypts data after it reaches the phone and Link protects stored backups, but neither can secure audio on the Pocket or while it travels over BLE.
 
@@ -163,15 +161,11 @@ Choose one primary library location in the app. Server-only imports require an a
 
 </details>
 
-<details id="transcription">
-<summary>Transcription</summary>
+## Transcription
 
 Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
 
-</details>
-
-<details id="optional-docling-server-processing">
-<summary>Optional: Docling server processing</summary>
+## Optional: Docling server processing
 
 Docling transcribes audio or formats summaries. It is separate from Link’s backup function. The repository’s Docker Compose stack runs Secure Pocket Link with upstream Docling Serve. It supports x86-64 and ARM64; the first build and first transcription can take time to download images and speech models.
 
@@ -185,10 +179,7 @@ Open Link settings at `http://127.0.0.1:8733/admin/`, choose a backup destinatio
 
 For a computer folder or NAS share, mount the share on the Docker host and follow [the Docker storage guide](link-server/DOCLING.md#host-folders-and-api-access). Keep Link’s config volume and library volume backed up together; the config volume contains the encryption key needed to read backups.
 
-</details>
-
-<details id="optional-tailscale-private-access">
-<summary>Optional: Tailscale private access</summary>
+## Optional: Tailscale private access
 
 Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
 
@@ -200,20 +191,16 @@ tailscale serve --bg 8732
 
 Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link settings detects this URL; tap **Refresh status** if it does not appear. Enter it in Android’s **Tailscale URL (fallback)** field. Keep **Local URL (preferred)** blank to use Tailscale only. `--bg` keeps Serve running after the terminal closes and restores it after a reboot or Tailscale restart. It is available while Tailscale is connected and Link is running. To disable this Link route, run `tailscale serve --bg 8732 off`. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve stays within your tailnet.
 
-</details>
-
-<details id="security-and-data">
-<summary>Security and data</summary>
+## Security and data
 
 Link encrypts recordings and settings secrets at rest. Keep its `link.key` with the Link configuration backup; losing the key can make encrypted backups unreadable. Read the [security notes](docs/SECURITY.md) before choosing a storage setup.
 
 The Bluetooth limitation described at the top is part of the PKT01 firmware. App and Link encryption protect data only after it leaves the recorder and while it is stored. A factory reset does not change BLE security.
 
-</details>
-
 ## Planned for the future
 
 - Add more transcription providers, including Whisper and other speech-to-text services, plus more summary LLM providers.
+- Port the Android app to desktop and iOS.
 - Explore custom Pocket firmware that adds authentication and encryption to BLE communications.
 - Explore firmware that lets the Pocket send recordings over built-in Wi-Fi directly to Secure Pocket Link or the Secure Pocket Android app, bypassing BLE for audio transfer.
 

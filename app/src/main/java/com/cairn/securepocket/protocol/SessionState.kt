@@ -9,7 +9,7 @@ import java.time.LocalDateTime
  * stale-session observations are dropped upstream (Glue) and this class never
  * carries state across sessions.
  *
- * Channel routing (wire-proven, see docs/PROTOCOL.md):
+ * Channel routing (based on observed PKT01 responses):
  *  - a3 (events): MCU&STA&ts / MCU&STO / MCU&REC&CON|CALL / MCU&OFF
  *  - a1 (responses): control replies while STANDBY; raw audio while CAPTURING,
  *    terminated by the embedded byte-sequence MCU&STO (marker scan with

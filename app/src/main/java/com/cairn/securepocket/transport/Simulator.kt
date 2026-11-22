@@ -17,8 +17,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Deterministic PKT01 simulator. Same Transport contract as the real BLE link so the
- * whole stack (protocol, capture, vault, UI) runs and is testable without hardware.
- * Wire-accurate replies captured from live sessions (docs/PROTOCOL.md).
+ * whole stack (protocol, capture, vault, UI) can be tested without hardware.
+ * Replies are based on captured PKT01 responses.
  */
 class Simulator(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),

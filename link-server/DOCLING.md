@@ -7,7 +7,8 @@ adds upstream `openai-whisper==20250625` and bundled `imageio-ffmpeg==0.6.0`;
 the stock Serve image omits Whisper ASR and an ffmpeg executable. Whisper is
 installed without its optional WhisperS2T/triton accelerator dependency, which
 does not have an arm64 wheel. All Docling code remains upstream; the build adds
-runtime dependencies only.
+runtime dependencies only. This stack does not use the Teczone image or fork
+Docling's processing code.
 
 Start the stack from the repository root:
 

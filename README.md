@@ -184,7 +184,7 @@ Secure Pocket includes English Vosk speech-to-text on the phone, but Vosk is not
 
 ## Optional: Docling server processing
 
-Docling transcribes audio or formats summaries. It is separate from Link’s backup function. The repository’s Docker Compose stack runs Secure Pocket Link with upstream Docling Serve. It supports x86-64 and ARM64; the first build and first transcription can take time to download images and speech models.
+Docling transcribes audio or formats summaries. It is separate from Link’s backup function. Docker Compose builds Secure Pocket Link beside Docling Serve, using the pinned official CPU image as its base. The Docling image adds upstream Whisper support for audio transcription; it does not use Teczone Docling. It supports x86-64 and ARM64. The first build and transcription can take time to download images and speech models.
 
 You need [Docker Compose](https://docs.docker.com/compose/install/) on the computer or server. From the repository root, run:
 
@@ -237,4 +237,3 @@ Original Secure Pocket project code is available under the permissive [MIT Licen
 - [Docker and Docling setup](link-server/DOCLING.md)
 - [Processing, transcripts, speakers, and summaries](docs/PROCESSING.md)
 - [Security notes](docs/SECURITY.md)
-- [Build Android from source](docs/BUILD.md)

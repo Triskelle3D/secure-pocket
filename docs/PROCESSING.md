@@ -4,7 +4,7 @@ Configure **Settings → Transcription** to use on-device Vosk (English), OpenAI
 
 ## Docling
 
-Start the Docker stack described in the [Docling setup guide](../README.md#3-add-docling-for-server-processing). Use the Link URL and phone token in Android's Docling settings. **Pre** transcribes the audio, **Post** formats the generated summary, and **Both** enables both stages. The summary provider still writes the summary.
+Start the Docker stack described in the [Docling setup guide](../README.md#optional-docling-server-processing). In Android, open **Settings → Transcription → Docling formatting** and enter the preferred local HTTPS URL, optional Tailscale fallback URL, and Link token. **Pre** transcribes the audio, **Post** formats the generated summary, and **Both** enables both stages. The selected summary provider still writes the summary.
 
 ## Library Location
 
@@ -14,7 +14,7 @@ Start the Docker stack described in the [Docling setup guide](../README.md#3-add
 
 ## On-device summaries
 
-On-device summaries require importing a CPU-compatible MediaPipe LLM `.task` model in **Settings → Summaries → On-device LLM**. The model is copied to private phone storage. See the [model recommendations and download steps](../README.md#choose-a-summary-model) for Gemma and computer-hosted alternatives. Use Vosk for speech and turn Docling off for a pipeline that stays on the phone. Long transcripts are summarized in sections before the app combines them.
+On-device summaries require importing a CPU-compatible MediaPipe LLM `.task` model in **Settings → Summaries → On-device LLM**. The model is copied to private phone storage. See the [model download steps](../README.md#choose-a-summary-provider) for Gemma and computer-hosted alternatives. Use Vosk for speech and turn Docling off for a pipeline that stays on the phone. Long transcripts are summarized in sections before the app combines them.
 
 ## Find and clear the Pocket
 

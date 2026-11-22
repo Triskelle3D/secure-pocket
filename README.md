@@ -98,12 +98,25 @@ Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Applicati
 
 ### Connect Android to Link
 
-1. On the Link computer, open `http://127.0.0.1:8733/admin/`. Unlock settings with the code in Link’s `admin.token` file. The page shows **Ready to receive Pocket recordings** when Link and its backup folder are ready.
+1. On the Link computer, open `http://127.0.0.1:8733/admin/`. Unlock settings with the code in `admin.token`; see [where to find it](#find-the-link-settings-unlock-code).
 2. In **Connect the Android app**, set up **Tailscale** and use the command shown there, or configure a LAN HTTPS route. Link detects the Tailscale URL when it can access the Tailscale CLI. For Docker, paste the URL printed by Tailscale into the editable field.
 3. On Android, open **Settings → Library Location → Secure Pocket Link**. Paste Link’s token. For Tailscale only, leave **Local URL (preferred)** blank and put the detected URL in **Tailscale URL (fallback)**. For local-first access, enter your LAN HTTPS URL in **Local URL (preferred)** and the Tailscale URL in **Tailscale URL (fallback)**. The phone tries local first, then Tailscale.
 4. Tap **Test connection**, then **Save settings**. Turn off **Also keep a copy on this phone** only if you want server-only imports; Link must be reachable at import time.
 
 Never enter `127.0.0.1` or a plain `http://` URL on Android. If both URLs are set, the local route’s TLS certificate must match the Tailscale URL hostname. Do not expose Link’s unencrypted API port directly to a LAN or the internet.
+
+### Find the Link settings unlock code
+
+The settings unlock code is stored in `admin.token` beside `config.json`. It is different from the **Link token** you enter on Android, and it changes whenever Link restarts.
+
+| Install | Read the unlock code |
+| --- | --- |
+| Windows PowerShell | `Get-Content "$env:APPDATA\secure-pocket-link\admin.token"` |
+| macOS Terminal | `cat "$HOME/Library/Application Support/secure-pocket-link/admin.token"` |
+| Linux terminal | `cat "${XDG_CONFIG_HOME:-$HOME/.config}/secure-pocket-link/admin.token"` |
+| Docker Compose | From the folder with `compose.yaml`, run `docker compose exec link cat /config/admin.token` |
+
+Enter the displayed code on the Link settings page on the same computer. Keep it private.
 
 ### Optional: Tailscale private access
 

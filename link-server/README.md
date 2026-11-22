@@ -28,13 +28,22 @@ To run it in the background and open settings automatically, use `link-server/st
 
 The first run creates a token and settings file automatically. Defaults are:
 
-| Platform | Settings file |
+| Install | Settings file |
 | --- | --- |
 | Windows | `%APPDATA%\secure-pocket-link\config.json` |
 | macOS | `~/Library/Application Support/secure-pocket-link/config.json` |
 | Linux | `$XDG_CONFIG_HOME/secure-pocket-link/config.json`, or `~/.config/secure-pocket-link/config.json` |
 
-Open `admin.token` in the same directory and paste its code into the settings page. The code changes when Link restarts. For Docker, the file is `/config/admin.token` in the Link container. Keep this code separate from the phone pairing token.
+The settings unlock code is stored in `admin.token` beside `config.json`. Use the command for your install:
+
+| Install | Show the unlock code |
+| --- | --- |
+| Windows PowerShell | `Get-Content "$env:APPDATA\secure-pocket-link\admin.token"` |
+| macOS Terminal | `cat "$HOME/Library/Application Support/secure-pocket-link/admin.token"` |
+| Linux terminal | `cat "${XDG_CONFIG_HOME:-$HOME/.config}/secure-pocket-link/admin.token"` |
+| Docker Compose | From the folder with `compose.yaml`, run `docker compose exec link cat /config/admin.token` |
+
+Paste the displayed code into Link settings on the computer running Link. The code changes when Link restarts. Keep it private and separate from the **Link token** used by Android.
 
 The encryption key is stored next to the settings file as `link.key` (or at the path passed with `--key-file`). Link encrypts new library backups and settings secrets with AES-GCM. At startup it automatically encrypts existing plaintext ZIP backups and loose MP3/JSON/Markdown/text files in the selected library while preserving their names and API access. The Link settings page has an **Encryption key backup** section with a **Download recovery key** action. Back up this key and `config.json` securely. If the key is lost, encrypted data cannot be recovered. Do not delete or replace the active key. Keep recovery copies separate from the library and protect them with encrypted storage.
 

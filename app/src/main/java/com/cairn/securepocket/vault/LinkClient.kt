@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.cairn.securepocket.capture.CaptureSink
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URI
@@ -19,6 +21,24 @@ data class RemoteUploadResult(val bundle: String, val sha256: String, val alread
 
 /** One entry from a Secure Pocket Link server /index.json. */
 data class LinkFile(val name: String, val bytes: Long, val mtime: Long, val sha16: String, val sidecar: String?, val bundle: String? = null)
+
+private const val MAX_LINK_BUNDLE_BYTES = 128L * 1024 * 1024
+private const val MAX_LINK_INDEX_BYTES = 4L * 1024 * 1024
+private const val MAX_LINK_ERROR_BYTES = 64L * 1024
+
+private fun InputStream.readBounded(limit: Long): ByteArray {
+    val output = ByteArrayOutputStream(minOf(limit, 64 * 1024L).toInt())
+    val buffer = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val count = read(buffer)
+        if (count < 0) break
+        total += count
+        check(total <= limit) { "Secure Pocket Link response exceeded the size limit." }
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
+}
 
 /**
  * Secure Pocket Link client: browses and pulls a desktop-hosted library over
@@ -147,7 +167,8 @@ class LinkClient(context: Context) {
         return base
     }
 
-    private fun get(path: String, timeoutMs: Int = 6000): Pair<Int, ByteArray> {
+    private fun get(path: String, timeoutMs: Int = 6000,
+        maxResponseBytes: Long = if (path == "/index.json") MAX_LINK_INDEX_BYTES else MAX_LINK_BUNDLE_BYTES): Pair<Int, ByteArray> {
         var lastError: Exception? = null
         val bases = baseUrls()
         val tlsIdentityHost = tlsFallbackIdentity(bases)
@@ -162,8 +183,8 @@ class LinkClient(context: Context) {
                 current.readTimeout = timeoutMs
                 current.requestMethod = "GET"
                 val code = current.responseCode
-                if (code == 401 || code == 403) return code to (current.errorStream?.readBytes() ?: ByteArray(0))
-                if (code in 200..299) return code to (current.inputStream.readBytes())
+                if (code == 401 || code == 403) return code to (current.errorStream?.readBounded(MAX_LINK_ERROR_BYTES) ?: ByteArray(0))
+                if (code in 200..299) return code to current.inputStream.readBounded(maxResponseBytes)
                 lastError = IllegalStateException("Server returned HTTP $code.")
             } catch (e: Exception) {
                 lastError = e
@@ -184,7 +205,7 @@ class LinkClient(context: Context) {
     }
 
     fun fetchIndex(): List<LinkFile> {
-        val (code, body) = get("/index.json")
+        val (code, body) = get("/index.json", maxResponseBytes = MAX_LINK_INDEX_BYTES)
         if (code != 200) throw IllegalStateException("index HTTP $code")
         val arr = JSONObject(String(body)).getJSONArray("files")
         val out = ArrayList<LinkFile>(arr.length())
@@ -196,7 +217,7 @@ class LinkClient(context: Context) {
                     o.getLong("bytes"),
                     o.getLong("mtime"),
                     o.optString("sha16", ""),
-                    if (o.isNull("sidecar")) null else o.optString("sidecar", null),
+                    if (o.isNull("sidecar")) null else o.getString("sidecar"),
                     o.optString("bundle").takeIf { it.matches(Regex("[0-9a-f-]+[.]zip")) },
                 )
             )
@@ -223,6 +244,7 @@ class LinkClient(context: Context) {
             if (f.sha16.isNotEmpty() && have.contains(f.sha16)) {
                 skipped++; notes.add("skip ${f.name} · already in vault"); continue
             }
+            var sink: CaptureSink? = null
             try {
                 val (code, payload) = get(if (f.bundle != null) "/library/" + f.bundle
                     else "/file/" + java.net.URLEncoder.encode(f.name, "UTF-8").replace("+", "%20"), 30000)
@@ -231,10 +253,11 @@ class LinkClient(context: Context) {
                 val body = if (f.bundle != null) artifacts.getValue(f.name) else payload
                 if (body.size.toLong() != f.bytes) { failed++; notes.add("fail ${f.name} · byte count mismatch"); continue }
                 val dt = dateOf(f.bundle ?: f.name)
-                val sink = CaptureSink("link-${System.currentTimeMillis()}", cacheDir)
-                sink.begin(); sink.append(body); sink.finish()
+                val importedSink = CaptureSink("link-${System.currentTimeMillis()}", cacheDir)
+                sink = importedSink
+                importedSink.begin(); importedSink.append(body); importedSink.finish()
                 val rec = synchronized(vaultLock) {
-                    val r = vault.importCapture(sink, dt.toLocalDate(), dt, f.bytes, null)
+                    val r = vault.importCapture(importedSink, dt.toLocalDate(), dt, f.bytes, null)
                     vault.verify(r)
                     if (f.bundle != null) {
                         artifacts["title.txt"]?.decodeToString()?.trim()?.takeIf { it.isNotBlank() }?.let {
@@ -252,6 +275,9 @@ class LinkClient(context: Context) {
                 notes.add("import ${f.name} → ${rec.localId} · ${rec.verification}")
             } catch (e: Exception) {
                 failed++; notes.add("fail ${f.name} · ${e.message}")
+            } finally {
+                // The downloaded recording is plaintext until VaultStore encrypts it.
+                sink?.file?.delete()
             }
         }
         return ImportSummary(imported, skipped, failed, notes)

@@ -16,10 +16,10 @@ Start the stack from the repository root:
 docker compose up --build -d
 ```
 
-Link stores recordings in `/data` and settings and its encryption key in
-`/config`, backed by the persistent `link-library` and `link-config` named
-volumes. Docling stores its model cache in `docling-models` mounted at
-`/models`. Containers run as non-root users, drop Linux capabilities, prohibit
+Link stores recordings in `/data`, settings in `/config`, and its encryption
+key in `/keys`, backed by the persistent `link-library`, `link-config`, and
+`link-key` named volumes. Docling stores its model cache in `docling-models`
+mounted at `/models`. Containers run as non-root users, drop Linux capabilities, prohibit
 privilege escalation, and have read-only root filesystems with bounded writable
 temporary storage. Link accepts uploads up to 128 MiB; its `/tmp` tmpfs defaults
 to 512 MiB for an incoming upload, encrypted staging, and temporary verified
@@ -31,9 +31,15 @@ set in Compose and can be adjusted with `LINK_MEMORY_LIMIT`, `LINK_CPU_LIMIT`,
 when increasing a tmpfs size or processing large uploads.
 
 The services share a dedicated Docker bridge. Docling has no published host
-port; it is reached at `docling:5001`. The default Link-to-Docling connection
-uses HTTP on this private bridge to support first-run model downloads. Enable
-TLS between Link and Docling with the optional overlay below.
+port; Link reaches it at `https://docling:5001`. Before either service starts,
+a network-isolated helper creates a persistent private CA, a Docling server
+certificate, and a random Docling API key. It renews the leaf certificate
+before expiry; Docling detects the renewed certificate and restarts its
+serving process to load it. Link trusts only the CA and sends the API key over
+TLS; Docling rejects API requests without that key. The private CA key is
+mounted only into the helper. The Docling server key, public CA certificate,
+and API key are mounted read-only into the services that need them. The first
+Compose start waits for provisioning before starting Link or Docling.
 
 ## Host folders and API access
 
@@ -78,13 +84,13 @@ If either port is already occupied, override `LINK_PUBLIC_API_PORT` or
 LINK_PUBLIC_API_PORT=28732 LINK_PUBLIC_ADMIN_PORT=28733 docker compose up --build -d
 ```
 
-## Optional TLS for Link to Docling
+## Use your own Docling TLS certificate
 
-The base stack keeps Docling off host ports but uses unencrypted HTTP over the
-private Docker bridge. To enable authenticated TLS, provide a CA certificate
-and a Docling server certificate/key. The server certificate must contain the
-DNS subject alternative name `docling`; keep all private keys outside the
-repository. The CA certificate must validate the Docling certificate.
+TLS is enabled by default. To replace the generated server certificate with
+one issued by your own CA, provide a CA certificate and a Docling server
+certificate/key. The server certificate must contain the DNS subject
+alternative name `docling`; keep private keys outside the repository. The CA
+certificate must validate the Docling certificate.
 
 ```sh
 DOCLING_TLS_CA_FILE=/absolute/path/ca.crt \
@@ -93,13 +99,12 @@ DOCLING_TLS_KEY_FILE=/absolute/path/docling.key \
 docker compose -f compose.yaml -f compose.docling-tls.yaml up --build -d
 ```
 
-This overlay mounts the files read-only, enables Docling Serve's upstream
-Uvicorn TLS support, and configures Link's standard HTTPS client to validate
-the provided CA. On a fresh Link config, the default service URL is
-`https://docling:5001`. If the existing `/config/config.json` has a saved
-Docling URL, update it in Link settings to `https://docling:5001`; saved
-settings take precedence over defaults. A failed TLS health check prevents
-Link from starting, so verify the CA and certificate SAN before deployment.
+This overlay replaces the generated certificate mounts; the standard Docling
+startup wrapper continues to provide TLS and API-key authentication. It also
+configures Link and the Docling health check to validate your CA. Link automatically upgrades the previous
+default `http://docling:5001` setting to HTTPS. Custom non-loopback Docling
+addresses must use HTTPS; HTTP is allowed only for a service on the same
+computer. If a TLS health check fails, verify the CA and certificate SAN.
 
 ## Model download and lifecycle
 

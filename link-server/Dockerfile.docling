@@ -22,3 +22,4 @@ RUN mkdir -p /models \
     && /opt/app-root/bin/python -c 'import whisper; print("Whisper audio backend ready")'
 
 USER 1001
+COPY --chown=1001:0 start_docling_secure.py /opt/app-root/bin/start_docling_secure.py

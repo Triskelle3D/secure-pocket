@@ -65,6 +65,31 @@ def load_or_create_key(path):
     return key
 
 
+def migrate_key_file(source, destination):
+    """Move a legacy colocated key into a separately protected key directory."""
+    source, destination = Path(source), Path(destination)
+    if source.resolve() == destination.resolve() or destination.exists() or not source.exists():
+        return False
+    key = load_or_create_key(source)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(destination, flags, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(key)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+    if load_or_create_key(destination) != key:
+        destination.unlink(missing_ok=True)
+        raise ValueError("Encryption key migration did not verify")
+    source.unlink()
+    _fsync_directory(destination.parent)
+    return True
+
+
 def is_encrypted(path):
     try:
         with open(path, "rb") as stream:

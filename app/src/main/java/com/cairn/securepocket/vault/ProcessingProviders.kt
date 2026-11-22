@@ -4,6 +4,8 @@ import android.content.SharedPreferences
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.util.UUID
@@ -18,10 +20,26 @@ internal fun endpoint(base: String, path: String, tlsIdentityHost: String? = nul
     }
 }
 
+private const val MAX_PROVIDER_RESPONSE_BYTES = 16L * 1024 * 1024
+
+private fun InputStream.readProviderResponse(): String {
+    val out = ByteArrayOutputStream()
+    val buffer = ByteArray(32 * 1024)
+    var total = 0L
+    while (true) {
+        val count = read(buffer)
+        if (count < 0) break
+        total += count
+        check(total <= MAX_PROVIDER_RESPONSE_BYTES) { "Processing server response exceeded the 16 MiB limit." }
+        out.write(buffer, 0, count)
+    }
+    return out.toString(Charsets.UTF_8.name())
+}
+
 internal fun HttpURLConnection.result(): String = try {
     val code = responseCode
     check(code in 200..299) { "Server returned HTTP $code." }
-    inputStream.bufferedReader().use { it.readText() }
+    inputStream.use { it.readProviderResponse() }
 } finally { disconnect() }
 
 internal class ProcessingProviders(private val p: SharedPreferences, private val local: OnDeviceModel) {

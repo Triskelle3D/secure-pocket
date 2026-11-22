@@ -33,7 +33,8 @@ from urllib.request import Request
 from urllib.error import HTTPError, URLError
 from link_crypto import (MAGIC as ENCRYPTED_MAGIC, decrypt_to_temporary,
                          encrypt_file_atomic, encrypt_stream,
-                         is_encrypted, load_or_create_key, seal_json, unseal_json)
+                         is_encrypted, load_or_create_key, migrate_key_file,
+                         seal_json, unseal_json)
 
 ROOT = os.path.expanduser("~/secure-pocket-link/inbox")
 TOKEN = None
@@ -51,6 +52,7 @@ API_BIND = "127.0.0.1"
 ENCRYPTION_KEY = None
 ENCRYPTION_KEY_PATH = None
 DOCLING_CONFIG = {}
+INTERNAL_DOCLING_API_KEY = ""
 DOCLING_SLOT = threading.BoundedSemaphore(1)
 CONFIG_LOCK = threading.RLock()
 LIBRARY_WRITE_LOCK = threading.RLock()
@@ -123,19 +125,26 @@ def _docling_probe(config):
     """Make one bounded request to Docling's health endpoint; never return its URL."""
     if not config.get("enabled"):
         return {"state": "disabled", "checkedAt": None}
-    base = str(config.get("docling_url") or "http://docling:5001").strip().rstrip("/")
+    base = str(config.get("docling_url") or "https://docling:5001").strip().rstrip("/")
     if not base.startswith(("http://", "https://")):
         return {"state": "unreachable", "checkedAt": _timestamp(), "detail": "Invalid service address"}
     try:
-        from docling_client import open_docling_request
-        request = Request(base + "/health", headers={"Accept": "application/json"}, method="GET")
+        from docling_client import _base_url, open_docling_request
+        base = _base_url(config)
+        headers = {"Accept": "application/json"}
+        api_key = str(config.get("docling_api_key") or "").strip()
+        if not api_key and _is_internal_docling(config):
+            api_key = INTERNAL_DOCLING_API_KEY
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        request = Request(base + "/health", headers=headers, method="GET")
         with open_docling_request(request, timeout=2.5) as response:
             return {"state": "reachable" if 200 <= response.status < 300 else "unreachable",
                     "httpStatus": response.status, "checkedAt": _timestamp()}
     except HTTPError as exc:
         return {"state": "degraded", "httpStatus": int(exc.code), "checkedAt": _timestamp(),
                 "detail": "Service replied, but its health check did not succeed"}
-    except (URLError, TimeoutError, OSError, ValueError):
+    except Exception:
         return {"state": "unreachable", "checkedAt": _timestamp(), "detail": "No response within 2.5 seconds"}
 
 
@@ -144,6 +153,14 @@ def stream_sha(stream):
     for chunk in iter(lambda: stream.read(65536), b""):
         digest.update(chunk)
     return digest.hexdigest()
+
+
+def _is_internal_docling(config):
+    try:
+        parsed = urlparse(str(config.get("docling_url") or "https://docling:5001").strip())
+        return parsed.scheme == "https" and parsed.hostname == "docling" and parsed.port in (None, 5001)
+    except ValueError:
+        return False
 
 
 def _replaced_loose_alias(name):
@@ -528,7 +545,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 try:
                     from docling_client import process_docling
-                    result = process_docling(source, kind="audio" if audio else "markdown", config=DOCLING_CONFIG)
+                    processing_config = dict(DOCLING_CONFIG)
+                    if _is_internal_docling(processing_config):
+                        processing_config["docling_api_key"] = INTERNAL_DOCLING_API_KEY
+                    result = process_docling(source, kind="audio" if audio else "markdown", config=processing_config)
                     payload = {"markdown": result["markdown"]}
                     if result.get("segments") is not None:
                         payload["segments"] = result["segments"]
@@ -677,7 +697,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "unknown path"})
 
     def _admin_request_allowed(self, data_request=False):
-        """Require a literal loopback Host and same-origin browser mutations."""
+        """Require loopback browser origin and a secret code for every admin data route."""
         import ipaddress
         bound_loopback = self.server.server_address[0] in ("127.0.0.1", "::1", "localhost")
         if bound_loopback:
@@ -839,6 +859,8 @@ class Handler(BaseHTTPRequestHandler):
                         or not parsed.hostname or parsed.username is not None
                         or parsed.query or parsed.fragment):
                     raise ValueError("Enter a Docling URL without credentials, query, or fragment")
+                if parsed.scheme == "http" and parsed.hostname.lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise ValueError("Docling must use HTTPS unless it runs on this computer")
             with CONFIG_LOCK:
                 docling_config = dict(DOCLING_CONFIG)
                 docling_config.update({"enabled": bool(docling.get("enabled")),
@@ -944,6 +966,7 @@ def main():
     global TOKEN, ROOT, CONFIG_PATH, CONFIG, DOCLING_CONFIG, ADMIN_PORT, ENCRYPTION_KEY
     global PUBLIC_API_PORT, PUBLIC_ADMIN_PORT, PUBLIC_HOST_REQUIRED, API_TLS, API_BIND
     global ADMIN_CODE, READABLE_LIBRARY, PUBLIC_URL, ENCRYPTION_KEY_PATH
+    global INTERNAL_DOCLING_API_KEY
     ap = argparse.ArgumentParser()
     ap.add_argument("--root")
     ap.add_argument("--port", type=int, default=8732)
@@ -961,10 +984,24 @@ def main():
     ap.add_argument("--library-files", action="store_true",
                     help="Store readable recording folders on a volume you encrypt")
     a = ap.parse_args()
+    api_key_file = os.environ.get("LINK_DOCLING_API_KEY_FILE", "").strip()
+    if api_key_file:
+        try:
+            INTERNAL_DOCLING_API_KEY = Path(api_key_file).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            ap.error(f"Cannot read the internal Docling API key file: {exc}")
+        if len(INTERNAL_DOCLING_API_KEY) < 32:
+            ap.error("The internal Docling API key file is invalid")
     CONFIG_PATH = (a.config or _default_config_path()).expanduser().resolve()
-    key_spec = (a.key_file or CONFIG_PATH.with_name("link.key")).expanduser()
+    key_spec = (a.key_file or _default_key_path()).expanduser()
     key_path = key_spec.parent.resolve() / key_spec.name
     ENCRYPTION_KEY_PATH = key_path
+    legacy_key_path = CONFIG_PATH.with_name("link.key")
+    try:
+        if key_path != legacy_key_path and not key_path.exists() and legacy_key_path.exists():
+            migrate_key_file(legacy_key_path, key_path)
+    except (OSError, ValueError) as exc:
+        ap.error(f"Cannot migrate the legacy Link encryption key: {exc}")
     try:
         raw_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.is_file() else {}
     except (OSError, json.JSONDecodeError):
@@ -998,6 +1035,8 @@ def main():
     API_TLS = bool(a.tls_cert)
     if API_BIND not in ("127.0.0.1", "::1", "localhost") and not (API_TLS or a.proxy_backend):
         ap.error("Non-loopback API binding requires direct TLS or --proxy-backend")
+    if API_BIND not in ("127.0.0.1", "::1", "localhost"):
+        print("WARNING: Link API is bound on all network interfaces. Keep it behind a trusted TLS proxy and restrict network access.", file=sys.stderr)
     if a.proxy_backend and not PUBLIC_URL:
         print("Warning: proxy backend has no LINK_PUBLIC_URL; pairing URL must be entered manually.", file=sys.stderr)
     if a.token_file:
@@ -1015,8 +1054,12 @@ def main():
         ap.error("The Link token must contain 16 to 256 characters")
     saved_docling = CONFIG.get("docling")
     DOCLING_CONFIG = dict(saved_docling) if isinstance(saved_docling, dict) else {}
-    if "docling_url" not in DOCLING_CONFIG and "LINK_DEFAULT_DOCLING_URL" in os.environ:
-        DOCLING_CONFIG["docling_url"] = os.environ["LINK_DEFAULT_DOCLING_URL"].strip()
+    default_docling_url = os.environ.get("LINK_DEFAULT_DOCLING_URL", "").strip()
+    if default_docling_url:
+        saved_docling_url = str(DOCLING_CONFIG.get("docling_url") or "").strip()
+        if not saved_docling_url or (default_docling_url == "https://docling:5001"
+                                     and saved_docling_url == "http://docling:5001"):
+            DOCLING_CONFIG["docling_url"] = default_docling_url
     if "enabled" not in DOCLING_CONFIG:
         DOCLING_CONFIG["enabled"] = _env_bool("LINK_DEFAULT_DOCLING_ENABLED", False)
     _public_pairing_url()
@@ -1026,8 +1069,9 @@ def main():
     if not a.token and not a.token_file:
         _write_config(CONFIG_PATH, CONFIG)
     ADMIN_CODE = secrets.token_urlsafe(32)
-    code_path = CONFIG_PATH.with_name("admin.token")
-    fd, temp_code = tempfile.mkstemp(prefix=".admin-", dir=CONFIG_PATH.parent)
+    code_path = Path(os.environ.get("LINK_ADMIN_TOKEN_FILE", str(CONFIG_PATH.with_name("admin.token")))).expanduser()
+    code_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_code = tempfile.mkstemp(prefix=".admin-", dir=code_path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(ADMIN_CODE + "\n")
@@ -1065,6 +1109,16 @@ def _default_config_path():
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / "secure-pocket-link" / "config.json"
+
+
+def _default_key_path():
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return base / "secure-pocket-link-keys" / "link.key"
 
 
 def _env_port(name, default):

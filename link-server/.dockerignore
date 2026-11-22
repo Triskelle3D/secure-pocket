@@ -1,6 +1,8 @@
 *
 !Dockerfile
 !Dockerfile.docling
+!generate_docling_tls.py
+!start_docling_secure.py
 !secure_pocket_link.py
 !docling_client.py
 !link_crypto.py

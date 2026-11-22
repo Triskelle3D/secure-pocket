@@ -1,5 +1,5 @@
-# Optional Link-to-Docling TLS. Create a private CA and a server certificate
-# with DNS SAN `docling`; keep the private key outside the repository.
+# Optional override: replace Compose's generated Docling leaf certificate with
+# a certificate issued by your own CA. TLS is already enabled in compose.yaml.
 services:
   link:
     environment:
@@ -16,13 +16,6 @@ services:
     environment:
       DOCLING_HEALTH_URL: https://docling:5001/health
       DOCLING_HEALTH_CA: /run/secrets/docling-ca.pem
-    command:
-      - docling-serve
-      - run
-      - --ssl-certfile
-      - /run/secrets/docling/tls.crt
-      - --ssl-keyfile
-      - /run/secrets/docling/tls.key
     volumes:
       - docling-models:/models
       - type: bind

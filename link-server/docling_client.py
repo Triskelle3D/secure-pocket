@@ -33,6 +33,8 @@ def _base_url(config: dict) -> str:
     if (url.scheme not in ("http", "https") or not url.hostname
             or url.username is not None or url.query or url.fragment):
         raise DoclingError("Docling URL must be an HTTP or HTTPS address without credentials")
+    if url.scheme == "http" and url.hostname.lower() not in {"localhost", "127.0.0.1", "::1"}:
+        raise DoclingError("Docling must use HTTPS unless it is running on this computer")
     return value
 
 

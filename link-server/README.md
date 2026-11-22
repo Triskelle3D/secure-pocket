@@ -34,18 +34,20 @@ The first run creates a token and settings file automatically. Defaults are:
 | macOS | `~/Library/Application Support/secure-pocket-link/config.json` |
 | Linux | `$XDG_CONFIG_HOME/secure-pocket-link/config.json`, or `~/.config/secure-pocket-link/config.json` |
 
-The settings unlock code is stored in `admin.token` beside `config.json`. Use the command for your install:
+The settings unlock code is stored in `admin.token` beside `config.json` for desktop installs. In Docker it lives only in the Link container's temporary `/run/link-admin` filesystem, not in the persistent config volume. Use the command for your install:
 
 | Install | Show the unlock code |
 | --- | --- |
 | Windows PowerShell | `Get-Content "$env:APPDATA\secure-pocket-link\admin.token"` |
 | macOS Terminal | `cat "$HOME/Library/Application Support/secure-pocket-link/admin.token"` |
 | Linux terminal | `cat "${XDG_CONFIG_HOME:-$HOME/.config}/secure-pocket-link/admin.token"` |
-| Docker Compose | From the folder with `compose.yaml`, run `docker compose exec link cat /config/admin.token` |
+| Docker Compose | From the folder with `compose.yaml`, run `docker compose exec link cat /run/link-admin/admin.token` |
 
 Paste the displayed code into Link settings on the computer running Link. The code changes when Link restarts. Keep it private and separate from the **Link token** used by Android.
 
-The encryption key is stored next to the settings file as `link.key` (or at the path passed with `--key-file`). Link encrypts new library backups and settings secrets with AES-GCM. At startup it automatically encrypts existing plaintext ZIP backups and loose MP3/JSON/Markdown/text files in the selected library while preserving their names and API access. The Link settings page has an **Encryption key backup** section with a **Download recovery key** action. Back up this key and `config.json` securely. If the key is lost, encrypted data cannot be recovered. Do not delete or replace the active key. Keep recovery copies separate from the library and protect them with encrypted storage.
+The encryption key is stored separately from the settings file by default (or at the path passed with `--key-file`). Link encrypts new library backups and settings secrets with AES-GCM. At startup it automatically encrypts existing plaintext ZIP backups and loose MP3/JSON/Markdown/text files in the selected library while preserving their names and API access. The Link settings page has an **Encryption key backup** section with a **Download recovery key** action. Back up this key and `config.json` securely. If the key is lost, encrypted data cannot be recovered. Do not delete or replace the active key. Keep recovery copies separate from both config and library, and protect them with encrypted storage.
+
+Default key locations are `%LOCALAPPDATA%\secure-pocket-link-keys\link.key` on Windows, `~/Library/Application Support/secure-pocket-link-keys/link.key` on macOS, and `${XDG_DATA_HOME:-$HOME/.local/share}/secure-pocket-link-keys/link.key` on Linux. Existing installs migrate the old config-adjacent key automatically on first start. Docker stores it in the separate `link-key` volume at `/keys/link.key`. Remove or separately protect old backups of `link-config` that may still contain the former colocated key.
 
 The initial recording destination is `~/Secure Pocket Library`. In Link settings, replace it with an absolute path to any writable folder. A mounted NAS share works too; mount it before starting Link so that the selected path points to the share. The config file is stored separately from the recording destination.
 
@@ -71,7 +73,7 @@ Link creates a 32-byte AES-GCM key on first start. In the local Link settings pa
 To move or recover a Link installation:
 
 1. Stop Link on the destination computer.
-2. Restore the recovery key as `link.key` beside the matching `config.json` in Link’s configuration folder. The platform paths are listed above. For Docker, restore it to `/config/link.key` in the persistent `link-config` volume.
+2. Restore the recovery key to the platform key location listed above. For Docker, restore it to `/keys/link.key` in the persistent `link-key` volume. Keep the matching `config.json` in `link-config`.
 3. Restore the matching library folder or Docker `link-library` volume.
 4. Start Link and confirm the library opens.
 
@@ -108,9 +110,9 @@ Compose publishes the phone API and settings page on host loopback by default. T
 
 For direct API TLS with a certificate trusted by Android, use the [`compose.link-tls.yaml` overlay](DOCLING.md#host-folders-and-api-access). Set `LINK_BIND_ADDRESS=0.0.0.0` only with this TLS overlay. The settings port remains loopback-only.
 
-Compose publishes the API on `LINK_PUBLIC_API_PORT` (default `8732`) and settings on `LINK_PUBLIC_ADMIN_PORT` (default `8733`), both at host loopback. `LINK_PUBLIC_URL` supplies the externally reachable HTTPS origin. Keep the library, settings, and `/config/link.key` encryption key in persistent volumes; do not mount the Docker socket into Link.
+Compose publishes the API on `LINK_PUBLIC_API_PORT` (default `8732`) and settings on `LINK_PUBLIC_ADMIN_PORT` (default `8733`), both at host loopback. `LINK_PUBLIC_URL` supplies the externally reachable HTTPS origin. Keep the library, settings, and `/keys/link.key` encryption key in their persistent volumes; back up the key separately from config and recordings. Do not mount the Docker socket into Link.
 
-Docker defaults use `/data` for recordings and `http://docling:5001` for processing on first launch. Recordings and config secrets are encrypted at rest with the key in `/config/link.key`; keep the `link-config` volume persistent and backed up together with the library. The settings UI can change either value; saved choices take precedence after restart. Compose uses a persistent named volume for `/data` by default. To store the library in a host folder instead, set `LINK_LIBRARY_HOST_PATH` to an absolute, writable host path and start Compose with the optional overlay:
+Docker defaults use `/data` for recordings and `https://docling:5001` for processing. An isolated helper creates a private CA, Docling server certificate, and API key in persistent volumes; Link verifies Docling's certificate and Docling requires Link's API key. The API key is mounted as a read-only secret file, not stored in Compose environment configuration. Link also stores its AES-GCM key in the separate `/keys/link.key` volume. Keep `link-key`, `link-config`, and library backups protected; separating volumes does not protect against a Docker administrator or full host compromise. The settings UI can change the processing address; non-loopback Docling addresses must use HTTPS. Compose uses a persistent named volume for `/data` by default. To store the library in a host folder instead, set `LINK_LIBRARY_HOST_PATH` to an absolute, writable host path and start Compose with the optional overlay:
 
 ```sh
 LINK_LIBRARY_HOST_PATH=/path/to/secure-pocket-library docker compose -f compose.yaml -f compose.host-library.yaml up -d --build

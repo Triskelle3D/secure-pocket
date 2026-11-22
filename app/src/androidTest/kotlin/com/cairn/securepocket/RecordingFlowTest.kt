@@ -79,7 +79,13 @@ class RecordingFlowTest {
             ui.onNodeWithText("Save").performClick()
             ui.onNodeWithText("Close").performClick()
             ui.onNode(row).performClick()
+            ui.waitUntil(15000) {
+                ui.onAllNodes(hasText("Edit summary") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            }
             ui.onNodeWithText("Edit summary").performClick()
+            ui.waitUntil(10000) {
+                ui.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
+            }
             ui.onNode(hasSetTextAction()).assertTextContains(revised)
             assertEquals(revised, readEncryptedText(r.summary))
             val audioForHash = Graph.runner.vault.materialize(r.mp3)

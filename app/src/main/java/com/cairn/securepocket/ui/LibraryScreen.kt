@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
@@ -102,8 +103,10 @@ fun LibraryScreen() {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRemote by remember { mutableStateOf<com.cairn.securepocket.vault.LinkFile?>(null) }
     selectedRemote?.let { RemoteRecordingViewer(it) { selectedRemote = null } }
-    records.firstOrNull { it.mp3.absolutePath == selected }?.let {
-        RecordingDetail(it, mode == LibraryMode.SUMMARIES) { selected = null }
+    records.firstOrNull { it.mp3.absolutePath == selected }?.let { record ->
+        key(record.mp3.absolutePath, mode) {
+            RecordingDetail(record, mode == LibraryMode.SUMMARIES) { selected = null }
+        }
     }
     val titles = remember(records, notesVersion) { records.associate { it.mp3.absolutePath to it.title } }
     var people by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }

@@ -5,7 +5,8 @@
 </p>
 Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product fell short of what I expected. I like the Pocket’s form, but its app left too much to be desired. Key features I wanted were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
 
-During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app imports Pocket recordings over Bluetooth and gives you more control over processing and storage than Pocket’s app:
+
+During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the pathway to Secure Pocket. The app imports Pocket recordings over Bluetooth and gives you more control over processing and storage than Pocket’s app:
 
 - Choose on-phone or self-hosted transcription, or connect another speech-to-text provider.
 - Use Docling for self-hosted transcription and summary formatting.
@@ -224,11 +225,11 @@ Android Keystore keys encrypt the phone library and settings. Link uses AES-GCM 
 - Add live transcription while a recording is underway and the app is open.
 - Improve speaker labeling so a few examples from the start of a meeting can help identify speakers later in the transcript.
 - Add calendar integration, agentic harness support, and an MCP server.
-- Explore Pocket firmware with authenticated, encrypted BLE and Wi-Fi transfers directly to Link or the Android app.
+- Explore custom Pocket firmware with authenticated, encrypted BLE and Wi-Fi transfers directly to Link or the Android app.
 
 ## License
 
-Secure Pocket’s original code is licensed under the [MIT License](LICENSE). You can use, copy, modify, reproduce, distribute, sublicense, and sell it under the license terms. Third-party libraries, fonts, speech models, and other assets have their own licenses; check the notices in `third_party/` and each component’s license. Gemma model weights are not included.
+Secure Pocket’s original code is licensed under the [MIT License](LICENSE). You can use, copy, modify, reproduce, distribute, sublicense, and sell it under the license terms. Third-party libraries, fonts, speech models, and other assets have their own licenses; check the notices in `third_party/` and each component’s license. Gemma model weights are not included. This project is in no way affiliated with Open Vision Engineering or the Pocket Ai Ecosystem. 
 
 ## More information
 

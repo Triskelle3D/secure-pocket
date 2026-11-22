@@ -4,7 +4,9 @@
   <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket green padlock icon">
 </p>
 
-Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**. It imports recordings over Bluetooth, plays audio, and creates editable transcripts and summaries. Keep recordings on your phone or back them up to a computer or NAS you control.
+Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product failed to match the experience I expected. I like the Pocket’s form, but its app left too much to be desired. Key features were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
+
+Secure Pocket imports recordings over Bluetooth, plays audio, and creates editable transcripts and summaries. Keep your library on your phone or back it up to a computer or NAS you control.
 
 > **Weakest link in the chain: the Pocket’s Bluetooth connection.** The PKT01’s current firmware does not authenticate or encrypt BLE communications. Someone nearby may be able to intercept traffic or impersonate the recorder. Secure Pocket encrypts data after it reaches the phone and Link protects stored backups, but neither can secure audio on the Pocket or while it travels over BLE. Factory reset does not fix this limitation.
 
@@ -159,24 +161,12 @@ Choose one primary library location in the app. Server-only imports require an a
 
 </details>
 
-<details id="optional-tailscale-private-access">
-<summary>Optional: Tailscale private access</summary>
-
-Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
-
-With Link running on the computer, open a terminal there and run once:
-
-```sh
-tailscale serve --bg 8732
-```
-
-Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link settings detects this URL; tap **Refresh status** if it does not appear. Enter it in Android’s **Tailscale URL (fallback)** field. Keep **Local URL (preferred)** blank to use Tailscale only. `--bg` keeps Serve running after the terminal closes and restores it after a reboot or Tailscale restart. It is available while Tailscale is connected and Link is running. To disable this Link route, run `tailscale serve --bg 8732 off`. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve stays within your tailnet.
-
-</details>
-
-## Transcription
+<details id="transcription">
+<summary>Transcription</summary>
 
 Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
+
+</details>
 
 <details id="optional-docling-server-processing">
 <summary>Optional: Docling server processing</summary>
@@ -192,6 +182,21 @@ docker compose up --build -d
 Open Link settings at `http://127.0.0.1:8733/admin/`, choose a backup destination, and use **Check Docling**. Configure HTTPS for phone access as described in the [Docker guide](link-server/DOCLING.md#host-folders-and-api-access). In Android, open **Settings → Transcription → Docling formatting**, select **Pre**, **Post**, or **Both**, enable server processing, and save. Select a summary provider for **Post** or **Both**. **Pre** uses Docling for transcription, so a separate speech-to-text provider is not needed.
 
 For a computer folder or NAS share, mount the share on the Docker host and follow [the Docker storage guide](link-server/DOCLING.md#host-folders-and-api-access). Keep Link’s config volume and library volume backed up together; the config volume contains the encryption key needed to read backups.
+
+</details>
+
+<details id="optional-tailscale-private-access">
+<summary>Optional: Tailscale private access</summary>
+
+Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
+
+With Link running on the computer, open a terminal there and run once:
+
+```sh
+tailscale serve --bg 8732
+```
+
+Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link settings detects this URL; tap **Refresh status** if it does not appear. Enter it in Android’s **Tailscale URL (fallback)** field. Keep **Local URL (preferred)** blank to use Tailscale only. `--bg` keeps Serve running after the terminal closes and restores it after a reboot or Tailscale restart. It is available while Tailscale is connected and Link is running. To disable this Link route, run `tailscale serve --bg 8732 off`. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve stays within your tailnet.
 
 </details>
 

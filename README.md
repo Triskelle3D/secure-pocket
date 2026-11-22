@@ -4,11 +4,13 @@
   <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket green padlock icon">
 </p>
 
-Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product failed to match the experience I expected. I like the Pocket’s form, but its app left too much to be desired. Key features were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
+Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product failed to match the experience I expected. I like the Pocket’s form, but its app left too much to be desired. Key features were missing or tied to a subscription, and I did not want to rely on trusting Pocket’s servers to handle my recordings.
 
-Secure Pocket imports recordings over Bluetooth, plays audio, and creates editable transcripts and summaries. Keep your library on your phone or back it up to a computer or NAS you control.
+After a very short amount of exploration I discovered pocket has left the BLE connection wide open and unencrypted, And thus: Secure Pocket was born!
 
-> **Weakest link in the chain: the Pocket’s Bluetooth connection.** The PKT01’s current firmware does not authenticate or encrypt BLE communications. Someone nearby may be able to intercept traffic or impersonate the recorder. Secure Pocket encrypts data after it reaches the phone and Link protects stored backups, but neither can secure audio on the Pocket or while it travels over BLE. Factory reset does not fix this limitation.
+Secure Pocket allows you to take control of your hardware by importing recordings over Bluetooth, playing audio, and creating editable transcripts and summaries to an android app. Keep your library on your phone or back it up to a computer or NAS you control with Secure Pocket Link.
+
+> **CRITICAL SECURITY FLAW: the Pocket’s Bluetooth connection.** The PKT01’s current firmware does not authenticate or encrypt BLE communications. Someone nearby may be able to intercept traffic or impersonate the recorder. Secure Pocket encrypts data after it reaches the phone and Link protects stored backups, but neither can secure audio on the Pocket or while it travels over BLE.
 
 ## Start here
 

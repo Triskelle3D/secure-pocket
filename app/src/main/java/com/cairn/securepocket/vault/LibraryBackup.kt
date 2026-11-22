@@ -172,8 +172,15 @@ class LibraryBackup(private val context: Context) {
         if (p.getString("library_destination", "Phone") == "Phone" || !storesOnPhone()) {
             scheduler.cancel(20831)
         } else {
-            scheduler.schedule(JobInfo.Builder(20831, ComponentName(context, LibraryBackupJob::class.java))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(15 * 60 * 1000L).setPersisted(true).build())
+            val builder = JobInfo.Builder(20831, ComponentName(context, LibraryBackupJob::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(15 * 60 * 1000L)
+            try {
+                scheduler.schedule(builder.setPersisted(true).build())
+            } catch (e: IllegalArgumentException) {
+                // Some ROMs reject persistence despite the permission; the app reschedules on
+                // every launch, so a non-persisted job still resumes after a reboot.
+                scheduler.schedule(builder.setPersisted(false).build())
+            }
         }
     }
 

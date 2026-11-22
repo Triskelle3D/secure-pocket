@@ -1,8 +1,9 @@
 <h1 align="center">Secure Pocket</h1>
 
 <p align="center">
-  <img src="docs/assets/secure-pocket-icon.png" width="180" height="180" alt="Secure Pocket green padlock icon">
+  <img src="docs/assets/secure-pocket-hero.png" width="720" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
 </p>
+<p align="center"><sub>Pocket device image based on <a href="https://heypocket.com/">Pocket’s product photography</a>.</sub></p>
 
 Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product fell short of what I expected. I like the Pocket’s form, but its app left too much to be desired. Key features I wanted were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
 
@@ -21,6 +22,8 @@ During a short investigation, I found that the Pocket’s stock firmware leaves 
 Expand a section below for optional model, Link, Docling, storage, and project details.
 
 ### Prepare or reset the Pocket
+
+![Factory-reset the Pocket: tap the button three times, then hold it until the LED turns blue.](docs/assets/factory-reset.gif)
 
 Before first pairing, factory-reset the Pocket:
 

@@ -61,8 +61,8 @@ android {
     minSdk = 30
     targetSdk = 35
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    versionCode = 9
-    versionName = "1.8.0"
+    versionCode = 10
+    versionName = "1.8.1"
   }
 
   if (releaseSigningConfigured) {

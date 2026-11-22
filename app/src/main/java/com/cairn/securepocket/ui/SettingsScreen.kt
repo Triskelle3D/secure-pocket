@@ -79,7 +79,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             PrefField(p, "docling_local_url", "Local Secure Pocket Link URL (preferred)")
                             PrefField(p, "docling_url", "Tailscale Secure Pocket Link URL (fallback)")
                             PrefField(p, "docling_token", "Link token", true)
-                            Text("Local URL: https://192.168.1.27:10444. Tailscale URL: https://swamp-hub.redacted-tailnet-name.ts.net:10443. The app tries Swamp Hub over LAN first, then Tailscale. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
+                            Text("Example: https://192.168.1.10:8443 for the local address and https://machine.your-tailnet.ts.net:8443 for the fallback. The app tries the local address first, then the fallback. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
                         }
                         PrefSwitch(p, "allow_processing_servers", false, "Send audio or text to selected processing servers")
                     }
@@ -141,7 +141,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             PrefField(p, "link_local_url", "Local URL (preferred)")
                             PrefField(p, "link_base", "Tailscale URL (fallback)")
                             PrefField(p, "link_token", "Link token", true)
-                            Text("Local URL: https://192.168.1.58:10444. Tailscale URL: https://redacted-hostname.redacted-tailnet-name.ts.net:8443. The app tries the Mac over LAN first, then Tailscale. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
+                            Text("Example: https://192.168.1.10:8443 for the local address and https://machine.your-tailnet.ts.net:8443 for the fallback. The app tries the local address first, then the fallback. Both routes use HTTPS.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (destination == "NAS") {
                             Title("NAS connection")

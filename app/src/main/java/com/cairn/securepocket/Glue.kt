@@ -349,10 +349,19 @@ class SessionRunner(
             is Response.Battery, is Response.Space, is Response.VersionInfo, is Response.Mac,
             is Response.Usb, is Response.Ste, is Response.UploadState, is Response.WifiStatus,
             is Response.Event -> {
+                // Literal keys: release builds run R8, so r::class.simpleName
+                // would be obfuscated and health lookups would miss.
                 val kind = when (r) {
                     is Response.VersionInfo -> r.kind.name
                     is Response.Event -> "PocketMode"
-                    else -> r::class.simpleName!!
+                    is Response.Battery -> "Battery"
+                    is Response.Space -> "Space"
+                    is Response.Mac -> "Mac"
+                    is Response.Usb -> "Usb"
+                    is Response.Ste -> "Ste"
+                    is Response.UploadState -> "UploadState"
+                    is Response.WifiStatus -> "WifiStatus"
+                    else -> return
                 }
                 if (r !is Response.Event || r.name == "REC&CON" || r.name == "REC&CALL")
                     _health.value = _health.value + (kind to r)

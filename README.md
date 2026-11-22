@@ -171,7 +171,7 @@ Choose one primary library location in the app. Server-only imports require an a
 
 ## Transcription
 
-Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
+Secure Pocket includes English Vosk speech-to-text on the phone, but Vosk is not very accurate. For the best transcription quality, I strongly recommend running a local Docling service on a computer or server you control and selecting **Pre**. This uses Docling to transcribe recordings instead of Vosk. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. Configure Docling with [the setup guide](#optional-docling-server-processing). Speaker labeling is a beta feature; read [the processing guide](docs/PROCESSING.md#names-and-speaker-labels).
 
 ## Optional: Docling server processing
 
@@ -209,6 +209,9 @@ The Bluetooth limitation described at the top is part of the PKT01 firmware. App
 
 - Add more transcription providers, including Whisper and other speech-to-text services, plus more summary LLM providers.
 - Port the Android app to desktop and iOS.
+- Publish the Android and iOS apps through Google Play and the Apple App Store.
+- Add live transcription while a recording is in progress and the app is open.
+- Improve speaker labeling so the app can use a few examples at the start of a meeting to suggest who said later transcript segments.
 - Explore custom Pocket firmware that adds authentication and encryption to BLE communications.
 - Explore firmware that lets the Pocket send recordings over built-in Wi-Fi directly to Secure Pocket Link or the Secure Pocket Android app, bypassing BLE for audio transfer.
 

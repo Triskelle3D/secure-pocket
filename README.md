@@ -16,6 +16,8 @@ Secure Pocket is an Android companion for the **Pocket voice recorder (PKT01)**.
 4. Import a recording. Find its audio, transcript, and summary in **Library**.
 5. Add Secure Pocket Link only if you want computer or NAS backups. Add Docling only if you want server-side transcription or formatting.
 
+Expand a section below for optional model, Link, Docling, storage, and project details.
+
 ### Prepare or reset the Pocket
 
 Before first pairing, factory-reset the Pocket:
@@ -27,11 +29,13 @@ Before first pairing, factory-reset the Pocket:
 
 Resetting the Pocket does not delete the phone’s Secure Pocket library or Link backup.
 
-## Choose a summary provider
+<details id="choose-a-summary-provider">
+<summary>Choose a summary provider</summary>
 
 New recordings get a summary only when a summary provider is selected and **Summarize and title new recordings** is on. Open **Settings → Summaries**, select a provider, then tap **Save settings**.
 
-### On-device model
+<details>
+<summary>On-device model</summary>
 
 This keeps transcript text on the phone. Secure Pocket does not include model weights because the available Gemma model has separate license terms.
 
@@ -40,21 +44,33 @@ This keeps transcript text on the phone. Secure Pocket does not include model we
 3. In **Settings → Summaries**, choose **On-device LLM → Choose model file** and select the downloaded file.
 4. Confirm the selected model name appears, enable **Summarize and title new recordings**, and tap **Save settings**.
 
-### OpenAI or OpenRouter
+</details>
+
+<details>
+<summary>OpenAI or OpenRouter</summary>
 
 These hosted options send transcript text to the selected provider. Create an API key with [OpenAI](https://platform.openai.com/api-keys) or [OpenRouter](https://openrouter.ai/settings/keys). In **Settings → Summaries**, select **OpenAI** or **OpenRouter**, enter the API key and a model ID supported by that provider, enable **Allow sending text to this provider**, and tap **Save settings**. Keep the key private.
 
-### Ollama or another compatible server
+</details>
+
+<details>
+<summary>Ollama or another compatible server</summary>
 
 For Ollama, install it on a computer, download a model with `ollama pull <model-name>`, then select **Ollama** in **Settings → Summaries**. Enter the model tag and an HTTPS server URL reachable from the phone. For another OpenAI-compatible service, choose **Compatible server**, enter its API base URL (including `/v1` when required), model ID, and API key. Enable **Allow sending text to this provider** and save. The phone must be able to reach the service; use HTTPS for network connections. See [Ollama’s OpenAI-compatible API guide](https://docs.ollama.com/api/openai-compatibility) for server details.
 
+</details>
+
 Summary generation can use a local on-device model or a server. When you choose a hosted provider, the transcript text is sent to that provider for processing.
 
-## Add Secure Pocket Link
+</details>
+
+<details id="add-secure-pocket-link">
+<summary>Add Secure Pocket Link</summary>
 
 Secure Pocket Link (Link) is an optional background app. It stores encrypted backups in a folder on a Windows, macOS, or Linux computer. You can choose a local disk or a mounted NAS folder, including Samba/SMB. Link has no cloud service. The Android phone and computer must be able to reach one another.
 
-### Install Link on Windows
+<details>
+<summary>Install Link on Windows</summary>
 
 1. Install [Python 3.10 or newer](https://www.python.org/downloads/windows/). During setup, enable **Add Python to PATH**.
 2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open PowerShell in the extracted project folder (the folder containing `link-server`).
@@ -75,7 +91,10 @@ Secure Pocket Link (Link) is an optional background app. It stores encrypted bac
 
 Stop Link with `.\link-server\stop-link.ps1` in PowerShell. Link logs are in `%APPDATA%\secure-pocket-link\link.log` and `link-error.log`.
 
-### Install Link on macOS or Linux
+</details>
+
+<details>
+<summary>Install Link on macOS or Linux</summary>
 
 1. Install Python 3.10 or newer. On macOS, use the [Python installer](https://www.python.org/downloads/macos/). On Debian or Ubuntu, run `sudo apt install python3 python3-venv`; on Fedora, run `sudo dnf install python3`; on Arch Linux, run `sudo pacman -S python`.
 2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open Terminal on macOS or a terminal on Linux in the extracted project folder (the folder containing `link-server`).
@@ -96,7 +115,10 @@ Stop Link with `.\link-server\stop-link.ps1` in PowerShell. Link logs are in `%A
 
 Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Application Support/secure-pocket-link/` on macOS or `${XDG_CONFIG_HOME:-~/.config}/secure-pocket-link/` on Linux.
 
-### Connect Android to Link
+</details>
+
+<details>
+<summary>Connect Android to Link</summary>
 
 1. On the Link computer, open `http://127.0.0.1:8733/admin/`. Unlock settings with the code in `admin.token`; see [where to find it](#find-the-link-settings-unlock-code).
 2. In **Connect the Android app**, set up **Tailscale** and use the command shown there, or configure a LAN HTTPS route. Link detects the Tailscale URL when it can access the Tailscale CLI. For Docker, paste the URL printed by Tailscale into the editable field.
@@ -105,7 +127,10 @@ Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Applicati
 
 Never enter `127.0.0.1` or a plain `http://` URL on Android. If both URLs are set, the local route’s TLS certificate must match the Tailscale URL hostname. Do not expose Link’s unencrypted API port directly to a LAN or the internet.
 
-### Find the Link settings unlock code
+</details>
+
+<details id="find-the-link-settings-unlock-code">
+<summary>Find the Link settings unlock code</summary>
 
 The settings unlock code is stored in `admin.token` beside `config.json`. It is different from the **Link token** you enter on Android, and it changes whenever Link restarts.
 
@@ -118,7 +143,17 @@ The settings unlock code is stored in `admin.token` beside `config.json`. It is 
 
 Enter the displayed code on the Link settings page on the same computer. Keep it private.
 
-### Optional: Tailscale private access
+</details>
+
+<details>
+<summary>Back up Link’s encryption key</summary>
+
+Link creates its encryption key automatically. In Link settings, use **Encryption key backup → Download recovery key**. Store this file on separate encrypted storage; anyone with the key and Link library can read the recordings. To move or restore Link, stop it and restore the matching key, `config.json`, and library before starting it again. See the [Link recovery guide](link-server/README.md#encryption-key-backup-and-recovery) for file locations. Without the original key, encrypted backups cannot be recovered.
+
+</details>
+
+<details>
+<summary>Optional: Tailscale private access</summary>
 
 Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
 
@@ -130,11 +165,12 @@ tailscale serve --bg 8732
 
 Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link settings detects this URL; tap **Refresh status** if it does not appear. Enter it in Android’s **Tailscale URL (fallback)** field. Keep **Local URL (preferred)** blank to use Tailscale only. `--bg` keeps Serve running after the terminal closes and restores it after a reboot or Tailscale restart. It is available while Tailscale is connected and Link is running. To disable this Link route, run `tailscale serve --bg 8732 off`. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve stays within your tailnet.
 
-### Back up Link’s encryption key
+</details>
 
-Link creates its encryption key automatically. In Link settings, use **Encryption key backup → Download recovery key**. Store this file on separate encrypted storage; anyone with the key and Link library can read the recordings. To move or restore Link, stop it and restore the matching key, `config.json`, and library before starting it again. See the [Link recovery guide](link-server/README.md#encryption-key-backup-and-recovery) for file locations. Without the original key, encrypted backups cannot be recovered.
+</details>
 
-## Optional: Docling server processing
+<details id="optional-docling-server-processing">
+<summary>Optional: Docling server processing</summary>
 
 Docling transcribes audio or formats summaries. It is separate from Link’s backup function. The repository’s Docker Compose stack runs Secure Pocket Link with upstream Docling Serve. It supports x86-64 and ARM64; the first build and first transcription can take time to download images and speech models.
 
@@ -148,7 +184,10 @@ Open Link settings at `http://127.0.0.1:8733/admin/`, choose a backup destinatio
 
 For a computer folder or NAS share, mount the share on the Docker host and follow [the Docker storage guide](link-server/DOCLING.md#host-folders-and-api-access). Keep Link’s config volume and library volume backed up together; the config volume contains the encryption key needed to read backups.
 
-## Storage choices
+</details>
+
+<details id="storage-choices">
+<summary>Storage choices</summary>
 
 - **Phone:** recordings stay in the Android app’s library.
 - **Secure Pocket Link:** Link writes to its selected computer folder or mounted SMB share.
@@ -156,30 +195,47 @@ For a computer folder or NAS share, mount the share on the Docker host and follo
 
 Choose one primary library location in the app. Server-only imports require an active network connection to the selected server. WebDAV and SMB are different: WebDAV connects from Android; SMB shares should be mounted on the computer running Link.
 
-## Transcription
+</details>
+
+<details id="transcription">
+<summary>Transcription</summary>
 
 Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
 
-## Security and data
+</details>
+
+<details id="security-and-data">
+<summary>Security and data</summary>
 
 Link encrypts recordings and settings secrets at rest. Keep its `link.key` with the Link configuration backup; losing the key can make encrypted backups unreadable. Read the [security notes](docs/SECURITY.md) before choosing a storage setup.
 
 The Bluetooth limitation described at the top is part of the PKT01 firmware. App and Link encryption protect data only after it leaves the recorder and while it is stored. A factory reset does not change BLE security.
 
-## Planned for the future
+</details>
+
+<details id="planned-for-the-future">
+<summary>Planned for the future</summary>
 
 - Add more transcription providers, including Whisper and other speech-to-text services, plus more summary LLM providers.
 - Explore custom Pocket firmware that adds authentication and encryption to BLE communications.
 - Explore firmware that lets the Pocket send recordings over built-in Wi-Fi directly to Secure Pocket Link or the Secure Pocket Android app, bypassing BLE for audio transfer.
 
-## License
+</details>
+
+<details id="license">
+<summary>License</summary>
 
 Original Secure Pocket project code is available under the permissive [MIT License](LICENSE). You may use, copy, modify, reproduce, distribute, sublicense, and sell it, subject to the license terms. Third-party libraries, fonts, speech models, and other assets keep their own licenses; see the notices in `third_party/` and each component’s license. Gemma model weights are not included.
 
-## More information
+</details>
+
+<details id="more-information">
+<summary>More information</summary>
 
 - [Secure Pocket Link setup, TLS, storage, and executable builds](link-server/README.md)
 - [Docker and Docling setup](link-server/DOCLING.md)
 - [Processing, transcripts, speakers, and summaries](docs/PROCESSING.md)
 - [Security notes](docs/SECURITY.md)
 - [Build Android from source](docs/BUILD.md)
+
+</details>

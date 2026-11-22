@@ -2,6 +2,7 @@ import java.io.OutputStream
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.HexFormat
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -36,10 +37,16 @@ val verifyVendoredRuntime = tasks.register("verifyVendoredRuntime") {
 }
 tasks.named("preBuild") { dependsOn(verifyVendoredRuntime) }
 
-val releaseStoreFile = providers.environmentVariable("SECURE_POCKET_RELEASE_STORE_FILE").orNull
-val releaseStorePassword = providers.environmentVariable("SECURE_POCKET_RELEASE_STORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("SECURE_POCKET_RELEASE_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("SECURE_POCKET_RELEASE_KEY_PASSWORD").orNull
+val localProperties = Properties()
+rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { localProperties.load(it) }
+fun signingValue(environmentName: String, propertyName: String): String? =
+  providers.environmentVariable(environmentName).orNull?.takeIf { it.isNotBlank() }
+    ?: localProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("SECURE_POCKET_RELEASE_STORE_FILE", "securePocketReleaseStoreFile")
+val releaseStorePassword = signingValue("SECURE_POCKET_RELEASE_STORE_PASSWORD", "securePocketReleaseStorePassword")
+val releaseKeyAlias = signingValue("SECURE_POCKET_RELEASE_KEY_ALIAS", "securePocketReleaseKeyAlias")
+val releaseKeyPassword = signingValue("SECURE_POCKET_RELEASE_KEY_PASSWORD", "securePocketReleaseKeyPassword")
 val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
 val releaseSigningConfigured = releaseSigningValues.any { !it.isNullOrBlank() }
 if (releaseSigningConfigured && releaseSigningValues.any { it.isNullOrBlank() }) {

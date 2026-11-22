@@ -8,9 +8,13 @@ Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I bui
 During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app imports Pocket recordings over Bluetooth and gives you more control over processing and storage than Pocket’s app:
 
 - Choose on-phone or self-hosted transcription, or connect another speech-to-text provider.
+- Use Docling for self-hosted transcription and summary formatting.
 - Use a local, self-hosted, or hosted model to create summaries.
 - Edit transcript text and Markdown summaries, and assign speakers to transcript segments (beta).
 - Keep your library on your phone or back it up to a computer or NAS you control with Secure Pocket Link or WebDAV.
+- Encrypt Link backups with a recovery key you can download and keep.
+- Use Secure Pocket without a subscription or Secure Pocket cloud service. Third-party providers you choose may charge fees or process data in their cloud.
+- Use the Pocket hardware you paid for without depending on Pocket’s app.
 
 Hosted providers receive the audio or text you send them, depending on the provider and settings.
 

@@ -29,8 +29,7 @@ Before first pairing, factory-reset the Pocket:
 
 Resetting the Pocket does not delete the phone’s Secure Pocket library or Link backup.
 
-<details id="choose-a-summary-provider">
-<summary>Choose a summary provider</summary>
+## Choose a summary provider
 
 New recordings get a summary only when a summary provider is selected and **Summarize and title new recordings** is on. Open **Settings → Summaries**, select a provider, then tap **Save settings**.
 
@@ -62,10 +61,7 @@ For Ollama, install it on a computer, download a model with `ollama pull <model-
 
 Summary generation can use a local on-device model or a server. When you choose a hosted provider, the transcript text is sent to that provider for processing.
 
-</details>
-
-<details id="add-secure-pocket-link">
-<summary>Add Secure Pocket Link</summary>
+## Add Secure Pocket Link
 
 Secure Pocket Link (Link) is an optional background app. It stores encrypted backups in a folder on a Windows, macOS, or Linux computer. You can choose a local disk or a mounted NAS folder, including Samba/SMB. Link has no cloud service. The Android phone and computer must be able to reach one another.
 
@@ -152,7 +148,18 @@ Link creates its encryption key automatically. In Link settings, use **Encryptio
 
 </details>
 
-<details>
+<details id="storage-choices">
+<summary>Storage choices</summary>
+
+- **Phone:** recordings stay in the Android app’s library.
+- **Secure Pocket Link:** Link writes to its selected computer folder or mounted SMB share.
+- **WebDAV NAS:** configure the NAS URL and credentials in **Settings → Library Location**. Keep the phone copy enabled if the server-only connection check is unavailable on your device.
+
+Choose one primary library location in the app. Server-only imports require an active network connection to the selected server. WebDAV and SMB are different: WebDAV connects from Android; SMB shares should be mounted on the computer running Link.
+
+</details>
+
+<details id="optional-tailscale-private-access">
 <summary>Optional: Tailscale private access</summary>
 
 Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
@@ -167,7 +174,9 @@ Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link setti
 
 </details>
 
-</details>
+## Transcription
+
+Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
 
 <details id="optional-docling-server-processing">
 <summary>Optional: Docling server processing</summary>
@@ -186,24 +195,6 @@ For a computer folder or NAS share, mount the share on the Docker host and follo
 
 </details>
 
-<details id="storage-choices">
-<summary>Storage choices</summary>
-
-- **Phone:** recordings stay in the Android app’s library.
-- **Secure Pocket Link:** Link writes to its selected computer folder or mounted SMB share.
-- **WebDAV NAS:** configure the NAS URL and credentials in **Settings → Library Location**. Keep the phone copy enabled if the server-only connection check is unavailable on your device.
-
-Choose one primary library location in the app. Server-only imports require an active network connection to the selected server. WebDAV and SMB are different: WebDAV connects from Android; SMB shares should be mounted on the computer running Link.
-
-</details>
-
-<details id="transcription">
-<summary>Transcription</summary>
-
-Secure Pocket includes English Vosk speech-to-text on the phone. **Settings → Transcription** also offers OpenAI speech-to-text and compatible speech APIs. **Docling Pre** or **Both** uses Docling for transcription and disables the other speech-engine choices. See [Docling setup](#optional-docling-server-processing) to configure it.
-
-</details>
-
 <details id="security-and-data">
 <summary>Security and data</summary>
 
@@ -213,29 +204,20 @@ The Bluetooth limitation described at the top is part of the PKT01 firmware. App
 
 </details>
 
-<details id="planned-for-the-future">
-<summary>Planned for the future</summary>
+## Planned for the future
 
 - Add more transcription providers, including Whisper and other speech-to-text services, plus more summary LLM providers.
 - Explore custom Pocket firmware that adds authentication and encryption to BLE communications.
 - Explore firmware that lets the Pocket send recordings over built-in Wi-Fi directly to Secure Pocket Link or the Secure Pocket Android app, bypassing BLE for audio transfer.
 
-</details>
-
-<details id="license">
-<summary>License</summary>
+## License
 
 Original Secure Pocket project code is available under the permissive [MIT License](LICENSE). You may use, copy, modify, reproduce, distribute, sublicense, and sell it, subject to the license terms. Third-party libraries, fonts, speech models, and other assets keep their own licenses; see the notices in `third_party/` and each component’s license. Gemma model weights are not included.
 
-</details>
-
-<details id="more-information">
-<summary>More information</summary>
+## More information
 
 - [Secure Pocket Link setup, TLS, storage, and executable builds](link-server/README.md)
 - [Docker and Docling setup](link-server/DOCLING.md)
 - [Processing, transcripts, speakers, and summaries](docs/PROCESSING.md)
 - [Security notes](docs/SECURITY.md)
 - [Build Android from source](docs/BUILD.md)
-
-</details>

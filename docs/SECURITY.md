@@ -47,7 +47,7 @@ Link limits concurrent request workers and applies an idle socket timeout, but i
 
 ## Findings from the supplied full audit
 
-The worktree was checked against `docs/security/SECURITY-AUDIT-2026-11-FULL.md` and its skeptical review. Status below reflects current source, not the older HEAD named in those reports.
+The worktree was checked against the November 2026 security audit and its skeptical review; those reports are held privately. Status below reflects current source, not the older HEAD named in the reports.
 
 | Finding | Status and remaining limit |
 | --- | --- |

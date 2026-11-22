@@ -219,6 +219,7 @@ Android Keystore keys encrypt the phone library and settings. Link uses AES-GCM 
 ## Planned for the future
 
 - Add Whisper and other transcription services, along with more summary providers.
+- Let users choose the default summary prompt or write a custom prompt to shape the format of their summaries.
 - Bring the app to desktop and iOS, then publish it through Google Play and the Apple App Store.
 - Add live transcription while a recording is underway and the app is open.
 - Improve speaker labeling so a few examples from the start of a meeting can help identify speakers later in the transcript.

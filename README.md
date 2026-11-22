@@ -3,8 +3,6 @@
 <p align="center">
   <img src="docs/assets/secure-pocket-hero.png" width="500" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
 </p>
-<p align="center"><sub>Pocket device image based on <a href="https://heypocket.com/">Pocket’s product photography</a>.</sub></p>
-
 Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product fell short of what I expected. I like the Pocket’s form, but its app left too much to be desired. Key features I wanted were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
 
 During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app imports Pocket recordings over Bluetooth and gives you more control over processing and storage than Pocket’s app:

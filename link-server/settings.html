@@ -32,28 +32,54 @@
       <span id="status-detail"></span>
     </div>
     <h2 id="connect-heading">Connect the Android app</h2>
+    <p class="hint">Choose a secure route, then copy its URL and the Link token into Secure Pocket on Android.</p>
     <ol class="pair">
-      <li>Put your phone on the same Wi-Fi as this computer, or connect both to the same tailnet.</li>
-      <li>In Secure Pocket on Android, open <strong>Settings → Library Location</strong>, select <strong>Secure Pocket Link</strong>, and enter these values:
+      <li>Choose your connection:
+        <div class="card" style="margin:12px 0;padding:16px">
+          <h3 style="margin:0 0 4px">Recommended: Tailscale</h3>
+          <p class="sub">Install Tailscale on this computer and your phone. Sign in to the same tailnet on both.</p>
+          <label for="serve-command">Run once on this computer to turn on private HTTPS access:</label>
+          <div class="row"><input id="serve-command" class="mono" type="text" readonly value="tailscale serve --bg 8732"><button class="secondary" id="copy-serve-command" type="button">Copy command</button></div>
+          <p class="sub">Background mode keeps Serve active after you close the terminal and resumes after a computer restart or Tailscale restart. Link and Tailscale must be running. To disable this route, run <code id="serve-stop-command">tailscale serve --bg 8732 off</code>.</p>
+          <p class="sub pairing-help" id="serve-command-message" role="status" aria-live="polite"></p>
+          <label for="pair-tailscale-url">Tailscale URL (paste into Android’s fallback field)</label>
+          <div class="row"><input id="pair-tailscale-url" class="mono" type="text" autocomplete="url" placeholder="Run the command above, or paste its HTTPS URL"><button class="secondary" id="copy-tailscale-url" type="button" disabled>Copy URL</button></div>
+          <p class="sub pairing-help" id="tailscale-help"></p>
+        </div>
+        <details>
+          <summary>Use a LAN HTTPS address instead, or add one as preferred</summary>
+          <p class="sub">Set up direct TLS or a trusted HTTPS proxy on this computer. The URL below is available when Link’s TLS or public HTTPS address is configured.</p>
+          <label for="pair-url">Configured HTTPS address</label>
+          <div class="row"><input id="pair-url" class="mono" type="text" readonly autocomplete="off" placeholder="Configure a LAN HTTPS address"><button class="secondary" id="copy-url" type="button" disabled>Copy URL</button></div>
+          <p class="sub pairing-help" id="pair-address-help"></p>
+          <p class="sub">If you set both URLs, the local HTTPS certificate must match the hostname in the Tailscale URL. Leave Local URL blank to use Tailscale alone.</p>
+        </details>
+      </li>
+      <li>Copy the <strong>Link token</strong>:
         <div class="pairing-fields">
-          <div>
-            <label for="pair-url">Secure Pocket Link URL</label>
-            <div class="row"><input id="pair-url" class="mono" type="text" readonly autocomplete="off"><button class="secondary" id="copy-url" type="button" disabled>Copy URL</button></div>
-          </div>
           <div>
             <label for="pair-token">Link token</label>
             <div class="row"><input id="pair-token" type="password" readonly autocomplete="off"><button class="secondary toggle" id="reveal" type="button" disabled>Show</button><button class="secondary" id="copy" type="button" disabled>Copy token</button></div>
           </div>
         </div>
-        <p class="sub pairing-help" id="pair-address-help" hidden></p>
+        <p class="sub pairing-help">Keep this token private. It authenticates the phone to Link.</p>
         <p class="sub pairing-help" id="pair-message" role="status" hidden></p>
       </li>
-      <li>Tap <strong>Test connection</strong>. Once it succeeds, tap <strong>Save settings</strong>.</li>
+      <li>On Android, open <strong>Settings → Library Location → Secure Pocket Link</strong>. For Tailscale only, leave <strong>Local URL (preferred)</strong> blank and paste the Tailscale URL into <strong>Tailscale URL (fallback)</strong>. Paste the token, tap <strong>Test connection</strong>, then <strong>Save settings</strong>.</li>
     </ol>
     <details id="pair-docling" hidden>
       <summary>Use Docling from Android</summary>
-      <p class="sub">Open <strong>Settings → Transcription → Docling formatting</strong>. Select Pre, Post, or Both, then enter the same URL in <strong>Secure Pocket Link URL with Docling enabled</strong> and the same <strong>Link token</strong>. Allow sending audio or text to processing servers and tap <strong>Save settings</strong>.</p>
+      <p class="sub">Open <strong>Settings → Transcription → Docling formatting</strong>. Select Pre, Post, or Both, enter the Link HTTPS address under Local URL or Tailscale URL, and enter the same <strong>Link token</strong>. Allow sending audio or text to processing servers and tap <strong>Save settings</strong>.</p>
     </details>
+  </section>
+  <section class="card" aria-labelledby="key-heading">
+    <h2 id="key-heading">Encryption key backup</h2>
+    <p class="hint">Link uses this key to encrypt recordings and saved secrets. Download a recovery copy before moving Link or its library to another computer.</p>
+    <p class="sub">Key file: <span class="mono" id="key-path">Loading…</span></p>
+    <p class="sub"><strong>Protect this file.</strong> Anyone with the key and encrypted library can read the recordings. Store the recovery copy separately on encrypted storage. Do not share it.</p>
+    <button class="secondary" id="download-key" type="button">Download recovery key</button>
+    <p class="sub" id="key-message" role="status" aria-live="polite"></p>
+    <p class="sub">To restore on another computer: stop Link, restore this key and the matching <code>config.json</code> to Link’s settings folder, restore the library, then start Link. The Secure Pocket Link README has platform-specific settings-folder paths.</p>
   </section>
   <div class="grid settings-grid">
     <section class="card"><h2>Backup destination</h2><p class="hint">Recordings sent from your phone are saved in this folder. A mounted NAS folder works when it is mounted and writable before Link starts.</p>
@@ -110,15 +136,25 @@ async function api(path, options={}) {
   return data;
 }
 function setStatus(title,detail='',error=false){$('status-title').textContent=title;$('status-detail').textContent=detail;$('status').classList.toggle('error',error)}
-function setPairAddress(url, port, scheme='http') {
+function isHttpsOrigin(value){try{const u=new URL(value);return u.protocol==='https:'&&!!u.hostname&&!u.username&&!u.password&&u.pathname==='/'&&!u.search&&!u.hash}catch{return false}}
+function setPairAddress(url, tailscaleUrl) {
   $('pair-url').value=url || '';
-  $('pair-url').placeholder=url ? '' : `${scheme}://<host-LAN-IP>:${port}`;
+  $('pair-url').placeholder=url ? '' : 'No local HTTPS URL configured';
   $('copy-url').disabled=!url;
-  const help=$('pair-address-help');
-  help.hidden=!!url;
-  help.textContent=scheme==='https'
-    ? `Use the computer’s LAN IP and port ${port}, or set LINK_PUBLIC_URL to the full HTTPS address.`
-    : 'Configure direct API TLS or a trusted HTTPS proxy and LINK_PUBLIC_URL before connecting a phone.';
+  $('pair-address-help').textContent=url
+    ? 'Use this as the Local URL if it is your LAN route, or as the Tailscale URL if it is your tailnet route.'
+    : 'No local HTTPS route is configured. You can still connect with Tailscale above.';
+  const tailscaleField=$('pair-tailscale-url'), savedTailscale=localStorage.getItem('link-tailscale-url') || '';
+  if(tailscaleField.dataset.manual!=='true') {
+    tailscaleField.value=savedTailscale || tailscaleUrl || '';
+    tailscaleField.dataset.source=savedTailscale?'saved':tailscaleUrl?'detected':'';
+  }
+  $('copy-tailscale-url').disabled=!isHttpsOrigin(tailscaleField.value.trim());
+  $('tailscale-help').textContent=tailscaleUrl
+    ? 'Tailscale Serve is active and forwarding to this Link server. Copy the URL above to Android’s Tailscale URL (fallback) field.'
+    : isHttpsOrigin(tailscaleField.value.trim())
+      ? 'Copy this URL into Android’s Tailscale URL (fallback) field.'
+      : 'If Link cannot detect Tailscale (for example, Link is running in Docker), paste the HTTPS URL printed by Tailscale Serve here.';
 }
 function setPairToken(token) {
   $('pair-token').value=token || '';
@@ -127,8 +163,7 @@ function setPairToken(token) {
   $('reveal').disabled=$('copy').disabled=!token;
   $('pair-message').hidden=true;
 }
-async function copyPairField(field,label) {
-  const message=$('pair-message');
+async function copyPairField(field,label,message=$('pair-message')) {
   try {
     await navigator.clipboard.writeText(field.value);
     message.textContent=`${label} copied.`;
@@ -153,7 +188,10 @@ async function load() {
     $('library-files').checked=s.libraryFiles;
     $('docling-enabled').checked=!!s.docling.enabled;
     $('docling-url').value=s.docling.docling_url || '';
-    setPairAddress(s.pairingUrl,s.apiPort,s.pairingScheme);
+    $('serve-command').value=`tailscale serve --bg ${s.apiPort}`;
+    $('serve-stop-command').textContent=`tailscale serve --bg ${s.apiPort} off`;
+    setPairAddress(s.pairingUrl,s.tailscaleUrl);
+    $('key-path').textContent=s.encryptionKeyPath || 'Link configuration folder/link.key';
     setPairToken(s.token);
     $('settings-content').hidden=false;
     $('admin-unlock').hidden=true;
@@ -167,14 +205,15 @@ async function load() {
 async function refresh() {
   try {
     const s=await api('/admin/api/status'), b=s.backup, a=s.apiListener;
+    const hasPhoneRoute=!!a.pairingUrl || !!a.tailscaleUrl || isHttpsOrigin($('pair-tailscale-url').value.trim());
     const problem=!a.running ? 'The phone API listener is stopped.'
-      : !a.pairingUrl ? 'Configure HTTPS for phone access. The API currently has no safe pairing URL.'
+      : !hasPhoneRoute ? 'Choose a secure phone route below. Tailscale is the quickest option.'
       : !s.authenticated ? 'Save a Link token before connecting Android.'
       : !b.ready ? 'Choose a writable backup folder below.' : '';
     if(problem) setStatus('Link needs attention',problem,true);
     else setStatus('Ready to receive Pocket recordings',
       'Waiting for Secure Pocket on Android. Connect your Pocket recorder to the phone over Bluetooth, then import recordings.');
-    setPairAddress(a.pairingUrl,a.port,a.pairingScheme);
+    setPairAddress(a.pairingUrl,a.tailscaleUrl);
     $('uptime').textContent=`Running for ${duration(s.uptimeSeconds)}`;
     $('listener').textContent=a.running ? `Listening on ${a.address || `port ${a.port}`}` : `Stopped · port ${a.port}`;
     $('backup').textContent=b.ready ? `Ready · ${b.root} · writable` : b.exists ? `Not writable · ${b.root}` : `Folder unavailable · ${b.root}`;
@@ -207,6 +246,33 @@ $('save').addEventListener('click',async()=>{
 });
 $('refresh').addEventListener('click',refresh);
 $('refresh-logs').addEventListener('click',refreshLogs);
+$('copy-serve-command').addEventListener('click',()=>copyPairField($('serve-command'),'Tailscale Serve command',$('serve-command-message')));
+$('pair-tailscale-url').addEventListener('input',event=>{
+  const value=event.currentTarget.value.trim();
+  if(value){localStorage.setItem('link-tailscale-url',value);event.currentTarget.dataset.manual='true';}
+  else {localStorage.removeItem('link-tailscale-url');event.currentTarget.dataset.manual='false';event.currentTarget.dataset.source='';}
+  const valid=isHttpsOrigin(value);
+  $('copy-tailscale-url').disabled=!valid;
+  if(value&&!valid)$('tailscale-help').textContent='Enter the HTTPS origin printed by Tailscale Serve, such as https://computer.tailnet.ts.net.';
+  else if(value)$('tailscale-help').textContent='Copy this HTTPS address into Android’s Tailscale URL (fallback) field.';
+  else $('tailscale-help').textContent='Run the Tailscale Serve command above, then paste its HTTPS address here.';
+});
+$('copy-tailscale-url').addEventListener('click',()=>copyPairField($('pair-tailscale-url'),'Tailscale URL',$('tailscale-help')));
+$('download-key').addEventListener('click',async()=>{
+  const button=$('download-key');
+  button.disabled=true;
+  $('key-message').textContent='Preparing download…';
+  try {
+    const response=await fetch('/admin/api/encryption-key',{cache:'no-store',headers:{'X-Admin-Token':adminCode}});
+    if(response.status===403){lockSettings('Unlock Link settings again before downloading the recovery key.');throw new Error('Settings locked.');}
+    if(!response.ok)throw new Error('Could not download the recovery key.');
+    const blob=await response.blob(), url=URL.createObjectURL(blob), anchor=document.createElement('a');
+    anchor.href=url;anchor.download='secure-pocket-link-recovery.key';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $('key-message').textContent='Recovery key downloaded. Store it separately on encrypted storage.';
+  } catch(e) {
+    $('key-message').textContent=e.message;
+  } finally {button.disabled=false;}
+});
 $('reveal').addEventListener('click',()=>{
   const field=$('pair-token'), show=field.type==='password';
   field.type=show?'text':'password';

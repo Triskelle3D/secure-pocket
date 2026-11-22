@@ -36,7 +36,7 @@ The first run creates a token and settings file automatically. Defaults are:
 
 Open `admin.token` in the same directory and paste its code into the settings page. The code changes when Link restarts. For Docker, the file is `/config/admin.token` in the Link container. Keep this code separate from the phone pairing token.
 
-The encryption key is stored next to the settings file as `link.key` (or at the path passed with `--key-file`). Link encrypts new library backups and settings secrets with AES-GCM. At startup it automatically encrypts existing plaintext ZIP backups and loose MP3/JSON/Markdown/text files in the selected library while preserving their names and API access. The key is required to read the library; back it up securely with the settings file. If the key is lost, restore it before starting Link. Do not delete or replace it: Link will stop rather than create a new key when encrypted data is present. Keep the key out of the recording folder and do not share it with untrusted users. Filesystem encryption still depends on protecting the OS account and key file.
+The encryption key is stored next to the settings file as `link.key` (or at the path passed with `--key-file`). Link encrypts new library backups and settings secrets with AES-GCM. At startup it automatically encrypts existing plaintext ZIP backups and loose MP3/JSON/Markdown/text files in the selected library while preserving their names and API access. The Link settings page has an **Encryption key backup** section with a **Download recovery key** action. Back up this key and `config.json` securely. If the key is lost, encrypted data cannot be recovered. Do not delete or replace the active key. Keep recovery copies separate from the library and protect them with encrypted storage.
 
 The initial recording destination is `~/Secure Pocket Library`. In Link settings, replace it with an absolute path to any writable folder. A mounted NAS share works too; mount it before starting Link so that the selected path points to the share. The config file is stored separately from the recording destination.
 
@@ -46,7 +46,27 @@ The settings page shows Link uptime, whether the phone API listener is running, 
 
 ## Pair the phone
 
-Open Link settings and look for **Ready to receive Pocket recordings**. Configure direct API TLS or a trusted HTTPS proxy first so the page can show a safe pairing URL. On Android, open **Settings → Library Location** and select **Secure Pocket Link**. Copy the **Secure Pocket Link URL** and **Link token** from **Connect the Android app** into the matching fields. Tap **Test connection**, then **Save settings**. Both devices need access to the HTTPS endpoint. Connect your Pocket recorder to Android over Bluetooth to send its recordings.
+1. Open Link settings at `http://127.0.0.1:8733/admin/`. Unlock with the code in `admin.token`. Wait for **Ready to receive Pocket recordings** and confirm the backup folder is writable.
+2. Install Tailscale on the Link computer and Android phone. Sign both into the same tailnet and connect Tailscale on the phone.
+3. On the Link computer, run `tailscale serve --bg 8732` once. This provides a private HTTPS address and keeps Serve running after you close the terminal. It resumes when Tailscale restarts or the computer reboots. Link settings detects the address when the Tailscale CLI is available. If Link runs in Docker, copy the HTTPS address printed by Tailscale into the editable **Tailscale URL** field in Link settings. Use `tailscale serve status` to see it later. Disable this route with `tailscale serve --bg 8732 off`. [Tailscale Serve guide](https://tailscale.com/docs/reference/tailscale-cli/serve).
+4. In Secure Pocket on Android, open **Settings → Library Location → Secure Pocket Link**. Paste the Link token. For Tailscale only, leave **Local URL (preferred)** blank and paste the HTTPS address into **Tailscale URL (fallback)**. For local-first access, also enter your LAN HTTPS address under **Local URL (preferred)**. Tap **Test connection**, then **Save settings**.
+
+Connect the Pocket recorder to Android over Bluetooth to import recordings. Secure Pocket then sends them to Link. The phone and Link computer must be online together for server-only imports.
+
+For LAN access without Tailscale, configure direct TLS or a trusted HTTPS proxy. Link’s API and settings listeners bind to loopback by default. Do not expose its plain HTTP API port to a LAN or the internet. If both Android URLs are set, the local route’s certificate must match the Tailscale URL hostname.
+
+## Encryption key backup and recovery
+
+Link creates a 32-byte AES-GCM key on first start. In the local Link settings page, use **Encryption key backup → Download recovery key**. The download contains the raw key. Anyone who obtains both this file and the encrypted library can decrypt recordings and saved Link secrets. Store the recovery file separately on encrypted storage. Do not email it, put it in the library folder, or share it.
+
+To move or recover a Link installation:
+
+1. Stop Link on the destination computer.
+2. Restore the recovery key as `link.key` beside the matching `config.json` in Link’s configuration folder. The platform paths are listed above. For Docker, restore it to `/config/link.key` in the persistent `link-config` volume.
+3. Restore the matching library folder or Docker `link-library` volume.
+4. Start Link and confirm the library opens.
+
+Do not start Link against an encrypted library with a new key. Link fails closed if the key is missing and encrypted data exists. Losing the key makes that data unrecoverable. Link does not currently rotate encryption keys; replace neither the key nor its matching configuration for an existing library.
 
 ## Use a Samba/SMB share
 

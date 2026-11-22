@@ -14,6 +14,7 @@ import json
 import mimetypes
 import os
 import socket
+import subprocess
 import sys
 import time
 import hmac
@@ -48,6 +49,7 @@ PUBLIC_URL = ""
 API_TLS = False
 API_BIND = "127.0.0.1"
 ENCRYPTION_KEY = None
+ENCRYPTION_KEY_PATH = None
 DOCLING_CONFIG = {}
 DOCLING_SLOT = threading.BoundedSemaphore(1)
 CONFIG_LOCK = threading.RLock()
@@ -612,6 +614,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._admin_page()
             if u.path == "/admin/api/settings":
                 return self._admin_settings()
+            if u.path == "/admin/api/encryption-key":
+                return self._admin_encryption_key()
             if u.path == "/admin/api/status":
                 return self._admin_status()
             if u.path == "/admin/api/logs":
@@ -733,8 +737,24 @@ class Handler(BaseHTTPRequestHandler):
                             "docling_url": DOCLING_CONFIG.get("docling_url", "")},
                 "apiPort": PUBLIC_API_PORT, "adminPort": PUBLIC_ADMIN_PORT,
                 "pairingUrl": pairing_url, "pairingScheme": "https" if API_TLS or PUBLIC_URL else "http",
+                "tailscaleUrl": _tailscale_serve_url(),
+                "encryptionKeyPath": str(ENCRYPTION_KEY_PATH) if ENCRYPTION_KEY_PATH else "",
                 "hostNeedsManual": pairing_url is None}
         return self._json(200, data)
+
+    def _admin_encryption_key(self):
+        if not self._admin_request_allowed(data_request=True):
+            return self._json(403, {"error": "Encryption key download is available only from unlocked Link settings"})
+        if not isinstance(ENCRYPTION_KEY, bytes) or len(ENCRYPTION_KEY) != 32:
+            return self._json(500, {"error": "Link encryption key is unavailable"})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition", 'attachment; filename="secure-pocket-link-recovery.key"')
+        self.send_header("Content-Length", str(len(ENCRYPTION_KEY)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(ENCRYPTION_KEY)
 
     def _admin_status(self):
         if not self._admin_request_allowed(data_request=True):
@@ -756,6 +776,7 @@ class Handler(BaseHTTPRequestHandler):
                              "address": f"{_url_host(lan_host)}:{PUBLIC_API_PORT}" if lan_host else None,
                              "bind": API_BIND, "tls": API_TLS, "pairingUrl": pairing_url,
                              "pairingScheme": "https" if API_TLS or PUBLIC_URL else "http",
+                             "tailscaleUrl": _tailscale_serve_url(),
                              "port": PUBLIC_API_PORT},
             "backup": {"root": ROOT, "exists": exists, "writable": writable,
                        "ready": exists and writable, "recordings": _library_count()},
@@ -863,7 +884,7 @@ class Handler(BaseHTTPRequestHandler):
         status = getattr(self, "_response_code", 0)
         if path in ("/health", "/index.json") and status < 400:
             return
-        if path in ("/admin/", "/admin/api/status", "/admin/api/logs"):
+        if path in ("/admin/", "/admin/api/status", "/admin/api/logs", "/admin/api/encryption-key"):
             return
         if path == "/admin/api/settings" and getattr(self, "command", "") == "GET":
             return
@@ -889,7 +910,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Keep terminal output private too: paths may contain recording titles or other data.
         path = urlparse(getattr(self, "path", "")).path
-        if path in ("/admin/", "/admin/api/status", "/admin/api/logs"):
+        if path in ("/admin/", "/admin/api/status", "/admin/api/logs", "/admin/api/encryption-key"):
             return
         if path == "/admin/api/settings" and self.command == "GET":
             return
@@ -922,7 +943,7 @@ class LimitedHTTPServer(ThreadingHTTPServer):
 def main():
     global TOKEN, ROOT, CONFIG_PATH, CONFIG, DOCLING_CONFIG, ADMIN_PORT, ENCRYPTION_KEY
     global PUBLIC_API_PORT, PUBLIC_ADMIN_PORT, PUBLIC_HOST_REQUIRED, API_TLS, API_BIND
-    global ADMIN_CODE, READABLE_LIBRARY, PUBLIC_URL
+    global ADMIN_CODE, READABLE_LIBRARY, PUBLIC_URL, ENCRYPTION_KEY_PATH
     ap = argparse.ArgumentParser()
     ap.add_argument("--root")
     ap.add_argument("--port", type=int, default=8732)
@@ -943,6 +964,7 @@ def main():
     CONFIG_PATH = (a.config or _default_config_path()).expanduser().resolve()
     key_spec = (a.key_file or CONFIG_PATH.with_name("link.key")).expanduser()
     key_path = key_spec.parent.resolve() / key_spec.name
+    ENCRYPTION_KEY_PATH = key_path
     try:
         raw_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.is_file() else {}
     except (OSError, json.JSONDecodeError):
@@ -1088,6 +1110,47 @@ def _pairing_host():
                 return address
     except OSError:
         pass
+    return None
+
+
+def _tailscale_serve_url():
+    """Return a Tailscale Serve origin only when its root proxies to Link's API."""
+    executable = shutil.which("tailscale")
+    if not executable:
+        return None
+    try:
+        result = subprocess.run([executable, "serve", "status", "--json"],
+                                capture_output=True, text=True, timeout=1.5, check=False)
+        if result.returncode != 0:
+            return None
+        status = json.loads(result.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    web = status.get("Web")
+    if not isinstance(web, dict):
+        return None
+    for authority, config in web.items():
+        if not isinstance(config, dict):
+            continue
+        handlers = config.get("Handlers")
+        root = handlers.get("/") if isinstance(handlers, dict) else None
+        proxy = urlparse(str(root.get("Proxy") or "")) if isinstance(root, dict) else None
+        try:
+            if (proxy is None or proxy.scheme != "http"
+                    or proxy.hostname not in ("127.0.0.1", "localhost", "::1")
+                    or proxy.port != PUBLIC_API_PORT):
+                continue
+        except ValueError:
+            continue
+        parsed = urlparse("//" + str(authority))
+        try:
+            if not parsed.hostname or parsed.username or parsed.password or parsed.path:
+                continue
+            if parsed.port is not None and not 1 <= parsed.port <= 65535:
+                continue
+        except ValueError:
+            continue
+        return f"https://{parsed.netloc}"
     return None
 
 

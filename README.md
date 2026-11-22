@@ -75,10 +75,10 @@ Secure Pocket Link (Link) is an optional background app. It stores encrypted bac
 
 Stop Link with `.\link-server\stop-link.ps1` in PowerShell. Link logs are in `%APPDATA%\secure-pocket-link\link.log` and `link-error.log`.
 
-### Install Link on macOS
+### Install Link on macOS or Linux
 
-1. Install [Python 3.10 or newer](https://www.python.org/downloads/macos/).
-2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open Terminal in the extracted project folder (the folder containing `link-server`).
+1. Install Python 3.10 or newer. On macOS, use the [Python installer](https://www.python.org/downloads/macos/). On Debian or Ubuntu, run `sudo apt install python3 python3-venv`; on Fedora, run `sudo dnf install python3`; on Arch Linux, run `sudo pacman -S python`.
+2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open Terminal on macOS or a terminal on Linux in the extracted project folder (the folder containing `link-server`).
 3. Create Link’s Python environment and install its dependencies:
 
    ```sh
@@ -92,54 +92,34 @@ Stop Link with `.\link-server\stop-link.ps1` in PowerShell. Link logs are in `%A
    sh ./link-server/start-link.sh
    ```
 
-5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, connect in Finder with **Go → Connect to Server**, mount the share, then choose its folder. Save settings.
+5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, mount it first. On macOS, connect in Finder with **Go → Connect to Server**; on Linux, mount it with your system’s SMB/CIFS client. Then choose its mounted folder and save.
 
-Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Application Support/secure-pocket-link/`.
-
-### Install Link on Linux
-
-1. Install Python 3.10 or newer and its virtual-environment package. On Debian or Ubuntu, run `sudo apt install python3 python3-venv`. On Fedora, run `sudo dnf install python3`. On Arch Linux, run `sudo pacman -S python`.
-2. Download and extract the [Secure Pocket source archive](archive/master.zip). Open a terminal in the extracted project folder (the folder containing `link-server`).
-3. Create Link’s Python environment and install its dependencies:
-
-   ```sh
-   python3 -m venv .venv
-   .venv/bin/python -m pip install -r link-server/requirements-runtime.txt
-   ```
-
-4. Start Link in the background and open its settings page:
-
-   ```sh
-   sh ./link-server/start-link.sh
-   ```
-
-5. In the browser, open **Backup destination** and choose a writable folder. For an SMB share, mount it on Linux first, then choose its mounted folder. Save settings.
-
-Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `${XDG_CONFIG_HOME:-~/.config}/secure-pocket-link/`.
+Stop Link with `sh ./link-server/stop-link.sh`. Logs are in `~/Library/Application Support/secure-pocket-link/` on macOS or `${XDG_CONFIG_HOME:-~/.config}/secure-pocket-link/` on Linux.
 
 ### Connect Android to Link
 
-1. On the Link computer, open `http://127.0.0.1:8733/admin/`. The settings page says **Ready to receive Pocket recordings** when Link and the backup folder are ready.
-2. Unlock settings using the code in Link’s `admin.token` file. Keep this admin code private. It is different from the **Link token** used by the phone.
-3. In **Connect the Android app**, copy the **Link token**. Link’s API listens on `127.0.0.1:8732` by default. For HTTPS access, choose direct TLS, a trusted HTTPS proxy, or the optional Tailscale setup below.
-4. In Secure Pocket, open **Settings → Library Location → Secure Pocket Link**. Enter your LAN HTTPS address under **Local URL (preferred)** if you have one. Enter the HTTPS fallback address under **Tailscale URL (fallback)** if configured. Paste the Link token. The app tries the local address first, then the fallback.
-5. Tap **Test connection**, then **Save settings**. Choose **Also keep a copy on this phone** if you want local playback, offline access, or on-phone processing. Turn it off for server-only imports; Link must be reachable when you import.
+1. On the Link computer, open `http://127.0.0.1:8733/admin/`. Unlock settings with the code in Link’s `admin.token` file. The page shows **Ready to receive Pocket recordings** when Link and its backup folder are ready.
+2. In **Connect the Android app**, set up **Tailscale** and use the command shown there, or configure a LAN HTTPS route. Link detects the Tailscale URL when it can access the Tailscale CLI. For Docker, paste the URL printed by Tailscale into the editable field.
+3. On Android, open **Settings → Library Location → Secure Pocket Link**. Paste Link’s token. For Tailscale only, leave **Local URL (preferred)** blank and put the detected URL in **Tailscale URL (fallback)**. For local-first access, enter your LAN HTTPS URL in **Local URL (preferred)** and the Tailscale URL in **Tailscale URL (fallback)**. The phone tries local first, then Tailscale.
+4. Tap **Test connection**, then **Save settings**. Turn off **Also keep a copy on this phone** only if you want server-only imports; Link must be reachable at import time.
 
-Use the exact HTTPS URLs shown by your TLS setup. When both addresses are set, the local route’s certificate must match the hostname in the fallback URL. Do not enter `127.0.0.1` or a plain `http://` address on Android: `127.0.0.1` on the phone means the phone itself. Do not expose Link’s unencrypted API port directly to a LAN or the internet.
+Never enter `127.0.0.1` or a plain `http://` URL on Android. If both URLs are set, the local route’s TLS certificate must match the Tailscale URL hostname. Do not expose Link’s unencrypted API port directly to a LAN or the internet.
 
 ### Optional: Tailscale private access
 
 Tailscale provides an HTTPS route to Link without opening a router port or configuring a public reverse proxy. Install [Tailscale on the Link computer](https://tailscale.com/download) and [on Android](https://tailscale.com/docs/install/android), then sign both devices in to the same tailnet. Keep Tailscale connected on the phone when using Link remotely.
 
-With Link running on the computer, open a terminal there and run:
+With Link running on the computer, open a terminal there and run once:
 
 ```sh
-tailscale serve 8732
+tailscale serve --bg 8732
 ```
 
-Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. It forwards tailnet traffic to Link’s loopback API on port `8732`. Enter that printed HTTPS address in Android’s **Tailscale URL (fallback)** field and leave **Local URL (preferred)** blank if you only want to use Tailscale. If you also configure a LAN URL, the TLS certificate on that local route must match the hostname in the Tailscale URL. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve keeps access within your tailnet.
+Tailscale Serve prints an HTTPS `*.ts.net` address for that computer. Link settings detects this URL; tap **Refresh status** if it does not appear. Enter it in Android’s **Tailscale URL (fallback)** field. Keep **Local URL (preferred)** blank to use Tailscale only. `--bg` keeps Serve running after the terminal closes and restores it after a reboot or Tailscale restart. It is available while Tailscale is connected and Link is running. To disable this Link route, run `tailscale serve --bg 8732 off`. See [Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve). Do not use Tailscale Funnel; Serve stays within your tailnet.
 
-Leave the terminal running while using this route; press **Ctrl+C** to stop it. Tailscale must stay connected on the phone and computer.
+### Back up Link’s encryption key
+
+Link creates its encryption key automatically. In Link settings, use **Encryption key backup → Download recovery key**. Store this file on separate encrypted storage; anyone with the key and Link library can read the recordings. To move or restore Link, stop it and restore the matching key, `config.json`, and library before starting it again. See the [Link recovery guide](link-server/README.md#encryption-key-backup-and-recovery) for file locations. Without the original key, encrypted backups cannot be recovered.
 
 ## Optional: Docling server processing
 

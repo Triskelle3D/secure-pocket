@@ -1,0 +1,1 @@
+Release signing material lives in THIS repo directory but is GITIGNORED (*.jks, local.properties): secure-pocket-release.jks (alias secure-pocket) + the four securePocketRelease* lines in local.properties. Passwords exist ONLY in local.properties. Back both up offline; never commit, never paste anywhere.

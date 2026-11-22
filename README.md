@@ -1,13 +1,20 @@
 <h1 align="center">Secure Pocket</h1>
 
 <p align="center">
-  <img src="docs/assets/secure-pocket-hero.png" width="560" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
+  <img src="docs/assets/secure-pocket-hero.png" width="500" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
 </p>
 <p align="center"><sub>Pocket device image based on <a href="https://heypocket.com/">Pocket’s product photography</a>.</sub></p>
 
 Secure Pocket is an Android companion for the Pocket PKT01 voice recorder. I built it after the product fell short of what I expected. I like the Pocket’s form, but its app left too much to be desired. Key features I wanted were missing or tied to a subscription, and I did not want to rely on Pocket’s servers to handle my recordings.
 
-During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app lets you take control of your recordings: import them over Bluetooth, play them, and create editable transcripts and summaries. Keep your library on your phone or back it up with Secure Pocket Link to a computer or NAS you control.
+During a short investigation, I found that the Pocket’s stock firmware leaves Bluetooth Low Energy (BLE) unauthenticated and unencrypted. That became the reason for Secure Pocket. The app imports Pocket recordings over Bluetooth and gives you more control over processing and storage than Pocket’s app:
+
+- Choose on-phone or self-hosted transcription, or connect another speech-to-text provider.
+- Use a local, self-hosted, or hosted model to create summaries.
+- Edit transcript text and Markdown summaries, and assign speakers to transcript segments (beta).
+- Keep your library on your phone or back it up to a computer or NAS you control with Secure Pocket Link or WebDAV.
+
+Hosted providers receive the audio or text you send them, depending on the provider and settings.
 
 > **CRITICAL SECURITY FLAW: the Pocket’s Bluetooth connection.** The PKT01’s current firmware does not authenticate or encrypt BLE communications. Someone nearby may be able to intercept traffic or impersonate the recorder. Secure Pocket encrypts data after it reaches the phone and Link protects stored backups, but neither can secure audio on the Pocket or while it travels over BLE.
 
@@ -212,6 +219,9 @@ The Bluetooth limitation described at the top is part of the PKT01 firmware. App
 - Publish the Android and iOS apps through Google Play and the Apple App Store.
 - Add live transcription while a recording is in progress and the app is open.
 - Improve speaker labeling so the app can use a few examples at the start of a meeting to suggest who said later transcript segments.
+- Add calendar integration.
+- Integrate with agentic harnesses.
+- Build an MCP server for Secure Pocket.
 - Explore custom Pocket firmware that adds authentication and encryption to BLE communications.
 - Explore firmware that lets the Pocket send recordings over built-in Wi-Fi directly to Secure Pocket Link or the Secure Pocket Android app, bypassing BLE for audio transfer.
 

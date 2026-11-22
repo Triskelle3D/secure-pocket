@@ -1,7 +1,7 @@
 <h1 align="center">Secure Pocket</h1>
 
 <p align="center">
-  <img src="docs/assets/secure-pocket-hero.png" width="720" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
+  <img src="docs/assets/secure-pocket-hero.png" width="560" alt="Pocket PKT01 recorder with the Secure Pocket app icon">
 </p>
 <p align="center"><sub>Pocket device image based on <a href="https://heypocket.com/">Pocket’s product photography</a>.</sub></p>
 
@@ -23,8 +23,6 @@ Expand a section below for optional model, Link, Docling, storage, and project d
 
 ### Prepare or reset the Pocket
 
-![Factory-reset the Pocket: tap the button three times, then hold it until the LED turns blue.](docs/assets/factory-reset.gif)
-
 Before first pairing, factory-reset the Pocket:
 
 1. **Back up anything you want to keep.** Factory reset permanently deletes every recording stored on the Pocket itself.
@@ -33,6 +31,13 @@ Before first pairing, factory-reset the Pocket:
 4. Keep the Pocket near the phone. In Secure Pocket, open **Device → Connect Pocket** and follow the Bluetooth permission prompts.
 
 Resetting the Pocket does not delete the phone’s Secure Pocket library or Link backup.
+
+<details>
+<summary>Visual guide</summary>
+
+<p><img src="docs/assets/factory-reset.gif" width="320" alt="Factory-reset the Pocket: tap the button three times, then hold it until the LED turns blue."></p>
+
+</details>
 
 ## Choose a summary provider
 
